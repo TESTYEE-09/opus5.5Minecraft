@@ -104,7 +104,7 @@ export function paintPlayerSkin(look, kind = 'player') {
   if (kind === 'zombie') { skin = '#5a9a52'; shirt = '#2f8a9a'; pants = '#3a3a8a'; hair = '#2f5a2a'; }
   if (kind === 'skeleton') { skin = '#c8c8c0'; shirt = '#b8b8b0'; pants = '#a8a8a0'; hair = '#c8c8c0'; }
   if (kind === 'verity') { skin = '#f3e9e6'; shirt = '#f6f6f8'; pants = '#f6f6f8'; hair = '#121016'; look = { ...look, hairStyle: 1 }; }
-  if (kind === 'verity_demon') { skin = '#2e2a2e'; shirt = '#141016'; pants = '#141016'; hair = '#060508'; look = { ...look, hairStyle: 1 }; }
+  if (kind === 'verity_demon') { skin = '#c9a01e'; shirt = '#b8901a'; pants = '#a8821a'; hair = '#c9a01e'; look = { ...look, hairStyle: 2 }; }
   // head
   s.boxFill('head', skin, 0.05, seed);
   const hd = s.boxes.head;
@@ -232,13 +232,82 @@ function paintQuadruped(kind) {
   return s;
 }
 
+// Equirect face texture for a sphere: the face sits at u = 0.25 (facing +Z).
+export function smileyTexture(demon) {
+  const W = 512, Hh = 256;
+  const c = document.createElement('canvas'); c.width = W; c.height = Hh;
+  const x = c.getContext('2d');
+  const r = mulberry32(demon ? 99 : 42);
+  x.fillStyle = demon ? '#d9ad1c' : '#f3c419'; x.fillRect(0, 0, W, Hh);
+  // grime and wear
+  for (let i = 0; i < 2600; i++) {
+    const g = r();
+    x.fillStyle = g < 0.5 ? `rgba(120,80,10,${0.05 + r() * 0.12})` : g < 0.8 ? `rgba(255,230,120,${r() * 0.15})` : `rgba(40,25,5,${r() * 0.18})`;
+    const s2 = 2 + r() * (g < 0.5 ? 10 : 4);
+    x.fillRect(r() * W, r() * Hh, s2, s2);
+  }
+  // darker toward the poles
+  const gr = x.createLinearGradient(0, 0, 0, Hh);
+  gr.addColorStop(0, 'rgba(60,40,0,0.45)'); gr.addColorStop(0.25, 'rgba(0,0,0,0)'); gr.addColorStop(0.75, 'rgba(0,0,0,0)'); gr.addColorStop(1, 'rgba(60,40,0,0.55)');
+  x.fillStyle = gr; x.fillRect(0, 0, W, Hh);
+  const cx = W * 0.25, cy = Hh * 0.5;
+  // eyes: tall black ovals
+  for (const sx of [-1, 1]) {
+    x.fillStyle = '#0a0806';
+    x.beginPath(); x.ellipse(cx + sx * 34, cy - 30, demon ? 15 : 12, demon ? 30 : 26, sx * (demon ? -0.18 : 0), 0, Math.PI * 2); x.fill();
+    if (demon) { x.fillStyle = '#ff2a1a'; x.beginPath(); x.arc(cx + sx * 34, cy - 24, 3, 0, Math.PI * 2); x.fill(); }
+    else { x.fillStyle = 'rgba(255,255,255,0.5)'; x.beginPath(); x.ellipse(cx + sx * 34 - 4, cy - 42, 3, 6, 0, 0, Math.PI * 2); x.fill(); }
+  }
+  // grin: a wide crescent full of teeth
+  const w = demon ? 92 : 80, top = cy + 4, bot = cy + (demon ? 74 : 62);
+  const mouth = () => { x.beginPath(); x.moveTo(cx - w, top - 6); x.quadraticCurveTo(cx, top + 26, cx + w, top - 6); x.quadraticCurveTo(cx + w * 0.7, bot + 6, cx, bot); x.quadraticCurveTo(cx - w * 0.7, bot + 6, cx - w, top - 6); x.closePath(); };
+  mouth(); x.fillStyle = '#100808'; x.fill();
+  x.save(); mouth(); x.clip();
+  const tooth = demon ? '#e8dcb0' : '#fbf6e8';
+  const n = demon ? 14 : 12;
+  for (let i = 0; i < n; i++) {
+    const tx = cx - w + (i + 0.5) * (2 * w / n);
+    const t = (tx - cx) / w;
+    const uy = top + 22 * (1 - t * t) - 6;
+    x.fillStyle = tooth; x.fillRect(tx - (w / n) + 2, uy - 4, 2 * w / n - 4, 20 + (demon && i % 3 === 0 ? 8 : 0));
+    const ly = bot - (bot - top) * 0.15 * (1 - t * t);
+    x.fillRect(tx - (w / n) + 2, ly - 22, 2 * w / n - 4, 22);
+  }
+  x.restore();
+  mouth(); x.lineWidth = 5; x.strokeStyle = '#2a1a04'; x.stroke();
+  // cheek creases
+  x.strokeStyle = 'rgba(80,50,0,0.6)'; x.lineWidth = 3;
+  for (const sx of [-1, 1]) { x.beginPath(); x.arc(cx + sx * (w + 4), top - 4, 9, sx > 0 ? Math.PI * 0.6 : -Math.PI * 0.4, sx > 0 ? Math.PI * 1.3 : Math.PI * 0.35); x.stroke(); }
+  if (demon) { x.fillStyle = 'rgba(120,10,10,0.55)'; for (let i = 0; i < 5; i++) x.fillRect(cx - w * 0.6 + r() * w * 1.2, bot - 4, 3, 10 + r() * 22); }
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.NoColorSpace; t.anisotropy = 4;
+  return t;
+}
+
 export function buildMob(kind, renderer) {
-  if (kind === 'verity' || kind === 'verity_demon') {
+  if (kind === 'verity') {
+    // Verity: a worn yellow smiley ball with black eyes and a wide toothy grin
+    const mat = renderer.entityMaterial(smileyTexture(false));
+    const root = new THREE.Group();
+    const head = new THREE.Group(); head.position.y = 0.45; root.add(head);
+    const ball = new THREE.Mesh(new THREE.SphereGeometry(0.42, 28, 18), mat);
+    head.add(ball);
+    root.userData = { mat, parts: { head }, kind: 'ball', height: 0.9 };
+    return root;
+  }
+  if (kind === 'verity_demon') {
+    // the thing she turns into: a tall, starved yellow figure wearing the same grin
     const skin = paintPlayerSkin(defaultLook(7), kind);
-    const mat = renderer.entityMaterial(skin.texture(), { emissive: kind === 'verity_demon' ? 0.12 : 0 });
-    const m = buildHumanoid(skin, mat, { scale: kind === 'verity' ? 0.55 : 1.2 });
-    m.userData.mat = mat;
-    m.userData.height = kind === 'verity' ? 1.05 : 2.3;
+    const mat = renderer.entityMaterial(skin.texture());
+    const m = buildHumanoid(skin, mat, { scale: 1.35, thin: true });
+    const headMat = renderer.entityMaterial(smileyTexture(true), { emissive: 0.05 });
+    const P = m.userData.parts;
+    P.head.children[0].visible = false;
+    const ball = new THREE.Mesh(new THREE.SphereGeometry(0.36, 28, 18), headMat);
+    ball.position.y = 0.3; P.head.add(ball);
+    for (const k of ['larm', 'rarm', 'lleg', 'rleg']) P[k].scale.y = 1.35;
+    m.userData.mat = mat; m.userData.mats = [mat, headMat];
+    m.userData.height = 2.6;
     return m;
   }
   if (kind === 'zombie' || kind === 'skeleton') {
@@ -345,8 +414,8 @@ export function animateModel(model, s, dt) {
 }
 
 export function setModelLight(model, sky, block, hurt) {
-  const m = model.userData.mat;
-  if (m) m.uniforms.uEnt.value.set(sky, block, hurt);
+  const mats = model.userData.mats || [model.userData.mat];
+  for (const m of mats) if (m) m.uniforms.uEnt.value.set(sky, block, hurt);
 }
 
 // ------------------------------------------------------------------ item meshes

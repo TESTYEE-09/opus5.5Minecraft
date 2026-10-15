@@ -7,7 +7,7 @@ import { LAYER } from '../gfx/renderer.js';
 import { rayBox } from '../world/world.js';
 
 const TYPES = ['mob', 'item', 'arrow', 'tnt', 'falling'];
-const MOB_SIZE = { pig: [0.45, 0.9], cow: [0.45, 1.4], sheep: [0.45, 1.3], chicken: [0.2, 0.7], zombie: [0.3, 1.9], skeleton: [0.3, 1.95], spider: [0.7, 0.9], verity: [0.3, 1.05], verity_demon: [0.45, 2.3] };
+const MOB_SIZE = { pig: [0.45, 0.9], cow: [0.45, 1.4], sheep: [0.45, 1.3], chicken: [0.2, 0.7], zombie: [0.3, 1.9], skeleton: [0.3, 1.95], spider: [0.7, 0.9], verity: [0.45, 0.9], verity_demon: [0.45, 2.6] };
 
 export class EntityViews {
   constructor(game) {

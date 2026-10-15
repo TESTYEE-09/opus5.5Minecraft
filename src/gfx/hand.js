@@ -104,9 +104,9 @@ export class Hand {
         o.rotation.set(0.1 - sw * 0.5, 0.75 + sw2 * 0.35, 0);
         this.arm.position.y -= 0.06;
       } else {
-        o.scale.setScalar(tool ? 0.62 : 0.48);
+        o.scale.setScalar(tool ? 0.58 : 0.42);
         o.position.set(0.40 + bx - this.sway.x * 0.2 - sw2 * 0.2, -0.27 + by + eq + this.sway.y * 0.1 + sw * 0.08 + eat * 0.15, -0.66 - sw * 0.15);
-        o.rotation.set(-0.2 - sw * 1.1 + eat * 0.6, -1.45 + sw2 * 0.4 + eat * 0.5, tool ? 0.2 + sw * 0.4 : 0.05);
+        o.rotation.set(-0.15 - sw * 1.1 + eat * 0.6, (tool ? -0.55 : -0.9) + sw2 * 0.4 + eat * 0.5, tool ? 0.35 + sw * 0.4 : 0.05);
       }
     }
   }

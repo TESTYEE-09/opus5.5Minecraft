@@ -18,8 +18,8 @@ const MOBS = {
   zombie: { hp: 20, hw: 0.3, h: 1.9, speed: 2.4, hostile: true, dmg: 3, burns: true, drops: [['rotten_flesh', 0, 2]], rare: [['iron_ingot', 0.03], ['carrot', 0]] },
   skeleton: { hp: 20, hw: 0.3, h: 1.95, speed: 2.3, hostile: true, ranged: true, burns: true, drops: [['bone', 0, 2], ['arrow', 0, 2]], rare: [['bow', 0.04]] },
   spider: { hp: 16, hw: 0.7, h: 0.9, speed: 3.2, hostile: true, dmg: 2, drops: [['string', 0, 2]], neutralDay: true },
-  verity: { hp: 30, hw: 0.25, h: 1.05, speed: 6, companion: true, drops: [] },
-  verity_demon: { hp: 60, hw: 0.4, h: 2.3, speed: 5.4, demon: true, dmg: 5, drops: [] },
+  verity: { hp: 30, hw: 0.42, h: 0.9, speed: 6, companion: true, drops: [] },
+  verity_demon: { hp: 60, hw: 0.4, h: 2.6, speed: 5.4, demon: true, dmg: 5, drops: [] },
 };
 export const MOB_KINDS = Object.keys(MOBS);
 const ETYPE = { mob: 0, item: 1, arrow: 2, tnt: 3, falling: 4 };
@@ -1115,12 +1115,12 @@ export class Server {
     if (reply) this.later.push([this.tick + 12 + Math.floor(this.rnd() * 20), () => this.veritySay(e, p, reply, true)]);
   }
   verityTurn(e, owner) {
-    e.kind = 'verity_demon'; e.health = MOBS.verity_demon.hp; e.hw = 0.4; e.h = 2.3; e.stare = 0;
+    e.kind = 'verity_demon'; e.health = MOBS.verity_demon.hp; e.hw = 0.4; e.h = 2.6; e.stare = 0;
     this.veritySay(e, owner, 'You should not have left me alone in the dark.', true);
     this.fx({ k: 'demon', x: e.x, y: e.y, z: e.z });
   }
   verityCalm(e, beaten) {
-    e.kind = 'verity'; e.health = MOBS.verity.hp; e.hw = 0.25; e.h = 1.05; e.unease = 8; e.mode = 'follow'; e.target = null;
+    e.kind = 'verity'; e.health = MOBS.verity.hp; e.hw = 0.42; e.h = 0.9; e.unease = 8; e.mode = 'follow'; e.target = null;
     const owner = this.players.get(e.owner);
     if (owner) this.veritySay(e, owner, beaten ? '...it stopped. I\'m sorry. I don\'t know what that was.' : "Good morning. Did something happen last night? I don't remember.", true);
     this.fx({ k: 'poof', x: e.x, y: e.y + 0.5, z: e.z });

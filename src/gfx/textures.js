@@ -736,42 +736,100 @@ for (let k = 0; k < 10; k++) GEN['destroy_' + k] = (p) => {
 
 // ================================================================== ITEM ICONS
 const ICON = {};
+// Hand-drawn 16x16 tool sprites. Head: L light, M mid, D dark. Handle: h light, H dark. Outline is automatic.
+const TOOL_ART = {
+  pickaxe: [
+    '................',
+    '...LLLLLL.......',
+    '..LMMMMMMLL.....',
+    '...DDDDMMMML....',
+    '........DMMML...',
+    '.......hHDDMML..',
+    '......hH...DML..',
+    '.....hH.....DML.',
+    '....hH......DM..',
+    '...hH........D..',
+    '..hH............',
+    '.hH.............',
+    'hH..............',
+    'H...............',
+    '................',
+    '................'],
+  axe: [
+    '................',
+    '.....LL.........',
+    '....LMML........',
+    '...LMMMMLh......',
+    '..LMMMMMDH......',
+    '..LMMMMDhH......',
+    '...DMMD.hH......',
+    '....DD.hH.......',
+    '......hH........',
+    '.....hH.........',
+    '....hH..........',
+    '...hH...........',
+    '..hH............',
+    '.hH.............',
+    'hH..............',
+    '................'],
+  shovel: [
+    '................',
+    '..........LLL...',
+    '.........LMMML..',
+    '.........LMMMD..',
+    '.........LMMD...',
+    '........hDDD....',
+    '.......hH.......',
+    '......hH........',
+    '.....hH.........',
+    '....hH..........',
+    '...hH...........',
+    '..hH............',
+    '.hH.............',
+    'hH..............',
+    '................',
+    '................'],
+  hoe: [
+    '................',
+    '....LLLLLL......',
+    '...LMMMMMDh.....',
+    '...DDD...hH.....',
+    '........hH......',
+    '.......hH.......',
+    '......hH........',
+    '.....hH.........',
+    '....hH..........',
+    '...hH...........',
+    '..hH............',
+    '.hH.............',
+    'hH..............',
+    '................',
+    '................',
+    '................'],
+  sword: [
+    '.............LL.',
+    '............LML.',
+    '...........LMD..',
+    '..........LMD...',
+    '.........LMD....',
+    '........LMD.....',
+    '.......LMD......',
+    '......LMD.......',
+    '..G..LMD........',
+    '..GGLMD.........',
+    '...GGD..........',
+    '...hGG..........',
+    '..hH.GG.........',
+    '.hH.............',
+    'PP..............',
+    'PP..............'],
+};
 function toolSprite(p, kind, pal) {
   clearAll(p);
-  const Lc = hex(pal[0]), Mc = hex(pal[1]), Dc = hex(pal[2]);
-  const h1 = hex('#8b6a3e'), h2 = hex('#5e4527');
-  const handleTo = kind === 'sword' ? 4 : kind === 'shovel' ? 10 : 9;
-  if (kind !== 'sword') for (let t = 0; t <= handleTo; t++) { p.set(1 + t, 14 - t, h1); p.set(2 + t, 14 - t, h2); }
-  if (kind === 'pickaxe') {
-    for (let a = 0; a <= 20; a++) {
-      const ang = -Math.PI / 2 + (a / 20) * (Math.PI / 2);
-      const x = 2.5 + Math.cos(ang) * 10.5, y = 13.5 + Math.sin(ang) * 10.5;
-      p.set(Math.round(x), Math.round(y), Lc);
-      const x2 = 2.5 + Math.cos(ang) * 9.3, y2 = 13.5 + Math.sin(ang) * 9.3;
-      p.set(Math.round(x2), Math.round(y2), a > 3 && a < 17 ? Mc : Dc);
-    }
-  } else if (kind === 'axe') {
-    for (let y = 1; y <= 7; y++) for (let x = 4; x <= 10; x++) {
-      const d = (x - 8.5) ** 2 / 14 + (y - 4) ** 2 / 9;
-      if (d < 1 && x + y < 14) p.set(x, y, d < 0.35 ? Mc : (x < 7 ? Lc : Dc));
-    }
-  } else if (kind === 'shovel') {
-    for (let y = 0; y <= 7; y++) for (let x = 8; x <= 15; x++) {
-      const dx = x - 11.6, dy = y - 3.6;
-      if (Math.abs(dx + dy) / 1.2 + Math.abs(dx - dy) / 2.2 < 2.6) p.set(x, y, dx - dy < -1 ? Lc : dx - dy > 1.5 ? Dc : Mc);
-    }
-  } else if (kind === 'hoe') {
-    for (let x = 6; x <= 12; x++) { p.set(x, 2, Lc); p.set(x, 3, x > 10 ? Dc : Mc); }
-    p.set(6, 4, Dc);
-  } else if (kind === 'sword') {
-    for (let t = 0; t <= 9; t++) { p.set(5 + t, 10 - t, Mc); p.set(6 + t, 10 - t, Dc); p.set(5 + t, 9 - t, Lc); }
-    p.set(14, 1, Lc); p.set(15, 0, Lc);
-    for (let t = 0; t < 5; t++) p.set(2 + t, 8 + t, hex('#4a3a2a'));
-    p.set(3, 9, Dc); p.set(5, 11, Dc);
-    for (let t = 0; t < 3; t++) { p.set(1 + t, 14 - t, h1); p.set(2 + t, 14 - t, h2); }
-    p.set(0, 15, Dc);
-  }
-  p.outline('#1a1410');
+  const col = { L: hex(pal[0]), M: hex(pal[1]), D: hex(pal[2]), h: hex('#9a7444'), H: hex('#5e4527'), G: hex('#3a2c1e'), P: hex(pal[2]) };
+  const art = TOOL_ART[kind];
+  for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) { const c = col[art[y][x]]; if (c) p.set(x, y, c); }
+  p.outline('#14100c');
 }
 const TIER_PAL = {
   wooden: ['#c09a5b', '#9c7b45', '#6e5530'], stone: ['#ababab', '#878787', '#5c5c5c'], iron: ['#f4f4f4', '#cfcfcf', '#949494'],
@@ -958,12 +1016,14 @@ ICON.sniper_rifle = (p) => gun(p, [[0, 7, 4, 9, WD], [0, 7, 4, 7, WL], [5, 6, 10
 ICON.bullets = (p) => { clearAll(p); for (const x of [3, 7, 11]) { p.rect(x, 5, x + 2, 6, '#c8c8c8'); p.rect(x, 7, x + 2, 12, '#d8a840'); p.rect(x, 7, x, 12, '#f0d070'); } p.outline('#2a1a08'); };
 ICON.verity = (p) => {
   clearAll(p);
-  p.rect(5, 1, 10, 6, '#f0e6e0');
-  p.rect(4, 1, 4, 9, '#141218'); p.rect(11, 1, 11, 9, '#141218'); p.rect(5, 0, 10, 0, '#141218'); p.rect(5, 1, 10, 1, '#141218');
-  p.rect(6, 3, 6, 4, '#000000'); p.rect(9, 3, 9, 4, '#000000');
-  p.rect(5, 7, 10, 13, '#f4f4f6'); p.rect(4, 8, 4, 11, '#f0e6e0'); p.rect(11, 8, 11, 11, '#f0e6e0');
-  p.rect(6, 14, 6, 15, '#f0e6e0'); p.rect(9, 14, 9, 15, '#f0e6e0'); p.rect(5, 13, 10, 13, '#d8d8de');
-  p.outline('#2a2430');
+  for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
+    const d = Math.hypot(x - 7.5, y - 7.5);
+    if (d < 7.2) p.set(x, y, hex(d > 6.2 ? '#b8900e' : (x + y) % 5 === 0 ? '#e0b010' : '#f3c419'));
+  }
+  p.rect(5, 3, 5, 6, '#0a0806'); p.rect(10, 3, 10, 6, '#0a0806');
+  p.rect(3, 8, 12, 8, '#100808'); p.rect(4, 9, 11, 10, '#fbf6e8'); p.rect(5, 11, 10, 11, '#100808');
+  for (const x of [5, 7, 9]) p.set(x, 9, hex('#a09880'));
+  p.outline('#3a2a04');
 };
 for (const tier of Object.keys(TIER_PAL)) for (const kind of ['pickaxe', 'axe', 'shovel', 'sword', 'hoe'])
   ICON[tier + '_' + kind] = (p) => toolSprite(p, kind, TIER_PAL[tier]);
