@@ -1335,7 +1335,7 @@ window.addEventListener('DOMContentLoaded', () => {
   try { window.__game = new Game(); }
   catch (e) {
     console.error(e);
-    document.getElementById('ui').innerHTML = `<div class="screen"><div class="panel" style="max-width:520px"><h2>Could not start</h2><p class="muted">${String(e.message || e)}</p><p class="muted">Lumencraft needs a browser with WebGL 2 (Chrome, Edge, Firefox or Safari 15+).</p></div></div>`;
+    document.getElementById('ui').innerHTML = `<div class="screen"><div class="panel" style="max-width:520px"><h2>Could not start</h2><p class="muted">${String(e.message || e)}</p><p class="muted">Nomae Craft needs a browser with WebGL 2 (Chrome, Edge, Firefox or Safari 15+).</p></div></div>`;
   }
 });
 export { overlapsSolid };
