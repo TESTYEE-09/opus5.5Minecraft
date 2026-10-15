@@ -8,7 +8,7 @@ import { stepBody, moveBody } from '../game/physics.js';
 import { growTree, BIOMES, BI } from '../world/worldgen.js';
 import { SMELT, fuelTicks } from '../game/inventory.js';
 import { mulberry32 } from '../core/noise.js';
-import { verityReply, verityIdle } from './verity.js';
+import { verityReply, verityIdle, jennyReply, jennyIdle } from './verity.js';
 
 const MOBS = {
   pig: { hp: 10, hw: 0.45, h: 0.9, speed: 1.7, passive: true, drops: [['raw_porkchop', 1, 3]] },
@@ -19,6 +19,7 @@ const MOBS = {
   skeleton: { hp: 20, hw: 0.3, h: 1.95, speed: 2.3, hostile: true, ranged: true, burns: true, drops: [['bone', 0, 2], ['arrow', 0, 2]], rare: [['bow', 0.04]] },
   spider: { hp: 16, hw: 0.7, h: 0.9, speed: 3.2, hostile: true, dmg: 2, drops: [['string', 0, 2]], neutralDay: true },
   verity: { hp: 30, hw: 0.42, h: 0.9, speed: 6, companion: true, drops: [] },
+  jenny: { hp: 40, hw: 0.3, h: 1.8, speed: 4.4, companion: true, drops: [] },
   verity_demon: { hp: 60, hw: 0.4, h: 2.6, speed: 5.4, demon: true, dmg: 5, drops: [] },
 };
 export const MOB_KINDS = Object.keys(MOBS);
@@ -71,7 +72,7 @@ export class Server {
     if (!p) return;
     this.players.delete(id);
     for (const s of this.viewers.values()) s.delete(id);
-    for (const e of this.entities.values()) if (e.owner === id && (e.kind === 'verity' || e.kind === 'verity_demon')) this.entities.delete(e.id);
+    for (const e of this.entities.values()) if (e.owner === id && (e.kind === 'verity' || e.kind === 'verity_demon' || e.kind === 'jenny')) this.entities.delete(e.id);
     this.broadcast({ t: 'pq', id });
     this.chat(`§e${p.name} left the game`);
   }
@@ -119,8 +120,9 @@ export class Server {
       case 'hit': this.hitEntity(p, m.e, m.d, m.kx, m.kz, m.gun); break;
       case 'gunfx': this.fx({ k: 'shot', snd: m.snd, a: m.a, b: m.b }, pid); break;
       case 'verity': this.placeVerity(p, m); break;
+      case 'jenny': this.placeJenny(p, m); break;
       case 'hitp': this.hitPlayer(p, m.e, m.d, m.kx, m.kz); break;
-      case 'use': this.useEntity(p, m.e, m.item); break;
+      case 'use': this.useEntity(p, m.e, m.item, m.sneak); break;
       case 'drop': this.spawnItem(m.item, m.p[0], m.p[1], m.p[2], m.v[0], m.v[1], m.v[2], 1.5); break;
       case 'pickup': {
         const e = this.entities.get(m.e);
@@ -569,6 +571,7 @@ export class Server {
     if (e.type === 'tnt' || e.type === 'arrow') return;
     if (e.type === 'item') return;
     if (!gun && e.hurt > 0.35) return;
+    if (e.kind === 'jenny' && e.owner === p.id) this.veritySay(e, p, ['Hey! Watch it!', 'Ow! Whose side are you on?', `I'm on your team, remember?`][Math.floor(this.rnd() * 3)]);
     if (e.kind === 'verity' && e.owner === p.id) { e.unease += 15; this.veritySay(e, p, ['Why did you hit me?', 'Ow. I will remember that.', "Don't do that again."][Math.floor(this.rnd() * 3)]); }
     this.damageMob(e, Math.min(40, dmg), kx, kz, p, gun ? 0.15 : 1);
   }
@@ -592,7 +595,7 @@ export class Server {
       // Verity faints back into her owner's pocket
       this.entities.delete(e.id);
       this.fx({ k: 'mobdie', e: e.id, kind: e.kind, x: e.x, y: e.y, z: e.z });
-      if (owner) { this.send(owner.id, { t: 'give', item: { id: I.verity, count: 1, dmg: 0 }, from: e.id }); this.send(owner.id, { t: 'chat', text: '§dVerity is hurt. She crawled back into your pocket.' }); }
+      if (owner) { const jn = e.kind === 'jenny'; this.send(owner.id, { t: 'give', item: { id: jn ? I.jenny : I.verity, count: 1, dmg: 0 }, from: e.id }); this.send(owner.id, { t: 'chat', text: jn ? '§bJenny is hurt and went home to rest. Use her card to call her back.' : '§dVerity is hurt. She crawled back into your pocket.' }); }
       return;
     }
     if (d.passive) { e.panic = 4; e.ai = 'panic'; }
@@ -608,9 +611,10 @@ export class Server {
       this.fx({ k: 'mobdie', e: e.id, kind: e.kind, x: e.x, y: e.y, z: e.z });
     }
   }
-  useEntity(p, eid, item) {
+  useEntity(p, eid, item, sneak) {
     const e = this.entities.get(eid);
     if (!e || e.type !== 'mob') return;
+    if (e.kind === 'jenny') { this.useJenny(p, e, item, sneak); return; }
     if (e.kind === 'verity') {
       if (e.owner !== p.id) { this.send(p.id, { t: 'chat', text: `§dVerity: I'm not yours.` }); return; }
       this.entities.delete(eid);
@@ -690,6 +694,7 @@ export class Server {
 
   updateMob(e, dt) {
     if (e.kind === 'verity' || e.kind === 'verity_demon') { this.updateVerity(e, dt); return; }
+    if (e.kind === 'jenny') { this.updateJenny(e, dt); return; }
     const d = MOBS[e.kind];
     const w = this.world;
     e.age += dt;
@@ -1081,7 +1086,7 @@ export class Server {
       if (Math.abs(e.x - p.x) > 110 || Math.abs(e.z - p.z) > 110) continue;
       const r3 = (v) => Math.round(v * 1000) / 1000;
       let extra = 0, kind = 0;
-      if (e.type === 'mob') { kind = MOB_KINDS.indexOf(e.kind); extra = (e.hurt > 0 ? 1 : 0) | (e.burn > 0 ? 2 : 0) | (e.sheared > 0 ? 4 : 0) | (e.target ? 8 : 0) | (e.stare > 0 ? 16 : 0); }
+      if (e.type === 'mob') { kind = MOB_KINDS.indexOf(e.kind); extra = ((e.outfit || 0) << 5) | (e.hurt > 0 ? 1 : 0) | (e.burn > 0 ? 2 : 0) | (e.sheared > 0 ? 4 : 0) | (e.target ? 8 : 0) | (e.stare > 0 ? 16 : 0); }
       else if (e.type === 'item') { kind = e.item.id; extra = e.item.count; }
       else if (e.type === 'falling') kind = e.block;
       else if (e.type === 'tnt') extra = Math.round(e.fuse * 10);
@@ -1101,10 +1106,18 @@ export class Server {
   }
   veritySay(e, p, text, all = false) {
     if (!text || !this.entities.has(e.id)) return;
-    const msg = { t: 'chat', text: (e.kind === 'verity_demon' ? '§4' : '§d') + text, from: e.kind === 'verity_demon' ? 'V̶e̶r̶i̶t̶y̶' : 'Verity' };
+    const msg = { t: 'chat', text: (e.kind === 'verity_demon' ? '§4' : e.kind === 'jenny' ? '§b' : '§d') + text, from: e.kind === 'verity_demon' ? 'V̶e̶r̶i̶t̶y̶' : e.kind === 'jenny' ? 'Jenny' : 'Verity' };
     if (all) this.broadcast(msg); else this.send(p.id, msg);
   }
   verityHears(p, text) {
+    for (const o of this.entities.values()) if (o.owner === p.id && o.kind === 'jenny') {
+      const named = /^(hey |ok |hi |@)?jenny\b/i.test(text.trim());
+      if (named || (Math.hypot(o.x - p.x, o.z - p.z) < 16 && /\?\s*$/.test(text) && !/verity/i.test(text))) {
+        const reply = jennyReply(this, o, p, text);
+        if (reply) this.later.push([this.tick + 10 + Math.floor(this.rnd() * 16), () => this.veritySay(o, p, reply, true)]);
+        if (named) return;
+      }
+    }
     let e = null;
     for (const o of this.entities.values()) if (o.owner === p.id && (o.kind === 'verity' || o.kind === 'verity_demon')) e = o;
     if (!e) return;
@@ -1214,6 +1227,93 @@ export class Server {
       e.yaw += d * Math.min(1, dt * 6);
     }
     e.pitch = 0;
+  }
+
+  // ------------------------------------------------------------------ Jenny
+  placeJenny(p, m) {
+    for (const e of this.entities.values()) if (e.owner === p.id && e.kind === 'jenny') this.entities.delete(e.id);
+    const e = this.spawnMob('jenny', m.p[0], m.p[1], m.p[2]);
+    e.owner = p.id; e.mode = 'follow'; e.outfit = (m.outfit | 0) & 15; e.talkT = 60 + this.rnd() * 90;
+    this.later.push([this.tick + 15, () => this.veritySay(e, p, ['Hey! Where are we off to?', 'Jenny, reporting for duty!', 'Ready when you are.'][Math.floor(this.rnd() * 3)])]);
+  }
+  useJenny(p, e, item, sneak) {
+    if (e.owner !== p.id) { this.send(p.id, { t: 'chat', text: '§bJenny: Hi! I already have a partner, sorry.' }); return; }
+    const it = item != null ? ITEMS[item] : null;
+    if (sneak) {
+      this.entities.delete(e.id);
+      this.send(p.id, { t: 'give', item: { id: I.jenny, count: 1, dmg: 0 }, from: e.id });
+      this.send(p.id, { t: 'chat', text: '§bJenny: See you later! Call me any time.' });
+      return;
+    }
+    if (it && it.block !== undefined && BLOCKS[it.block].wool) {
+      const COLS = ['white', 'light_gray', 'gray', 'black', 'red', 'orange', 'yellow', 'lime', 'green', 'cyan', 'light_blue', 'blue', 'purple', 'magenta', 'pink', 'brown'];
+      e.outfit = Math.max(0, COLS.indexOf(BLOCKS[it.block].wool));
+      this.send(p.id, { t: 'take', item: item, n: 1 });
+      this.veritySay(e, p, ['Ooh, I love this colour!', 'New outfit! How do I look?', 'Thanks! This one is comfy.'][Math.floor(this.rnd() * 3)]);
+      this.fx({ k: 'poof', x: e.x, y: e.y + 1, z: e.z });
+      return;
+    }
+    const TRADES = {
+      gold_ingot: [['bread', 3], ['apple', 2], ['arrow', 8], ['torch', 8], ['iron_ingot', 2], ['cooked_porkchop', 2]],
+      emerald: [['diamond', 1], ['golden_apple', 1], ['bullets', 16], ['crystal_shard', 3], ['iron_ingot', 5]],
+      diamond: [['golden_apple', 2], ['crystal_shard', 6], ['emerald', 3]],
+    };
+    if (it && TRADES[it.name]) {
+      const [name, n] = TRADES[it.name][Math.floor(this.rnd() * TRADES[it.name].length)];
+      this.send(p.id, { t: 'take', item: item, n: 1 });
+      this.spawnItem({ id: I[name], count: n, dmg: 0 }, e.x, e.y + 1.2, e.z, (p.x - e.x) * 0.8, 3, (p.z - e.z) * 0.8, 0.3);
+      this.veritySay(e, p, `Deal! Here's ${n} ${ITEMS[I[name]].display.toLowerCase()}.`);
+      return;
+    }
+    if (it && it.food) { this.send(p.id, { t: 'take', item: item, n: 1 }); e.health = MOBS.jenny.hp; this.veritySay(e, p, 'Yum, thank you! I feel much better.'); return; }
+    e.mode = e.mode === 'stay' ? 'follow' : 'stay';
+    if (e.mode === 'stay') e.home = [e.x, e.y, e.z];
+    this.veritySay(e, p, e.mode === 'stay' ? `Okay, I'll wait here.` : `Let's go!`);
+  }
+  updateJenny(e, dt) {
+    const owner = this.players.get(e.owner);
+    if (!owner) { e.gone = (e.gone || 0) + dt; if (e.gone > 20) this.entities.delete(e.id); return; }
+    e.gone = 0; e.age += dt;
+    if (e.hurt > 0) e.hurt -= dt;
+    if (e.attackCd > 0) e.attackCd -= dt;
+    if (e.jumpCd > 0) e.jumpCd -= dt;
+    e.health = Math.min(MOBS.jenny.hp, e.health + dt * 0.4);
+    const ox = owner.x, oz = owner.z;
+    let tx, tz, speed = 0;
+    let foe = null, fd = 12;
+    for (const o of this.entities.values()) {
+      if (o.type !== 'mob' || !MOBS[o.kind].hostile) continue;
+      const d = Math.hypot(o.x - ox, o.z - oz);
+      if (d < fd) { fd = d; foe = o; }
+    }
+    if (foe && e.mode !== 'stay') {
+      tx = foe.x; tz = foe.z; speed = 5.4;
+      const d = Math.hypot(foe.x - e.x, foe.z - e.z);
+      if (d < 2 && Math.abs(foe.y - e.y) < 2 && e.attackCd <= 0) { e.attackCd = 0.7; this.damageMob(foe, 5, foe.x - e.x, foe.z - e.z, owner); }
+    } else if (e.mode === 'stay' && e.home) { tx = e.home[0]; tz = e.home[2]; speed = 3; }
+    else {
+      const fx = -Math.sin(owner.yaw), fz = -Math.cos(owner.yaw), rx = Math.cos(owner.yaw), rz = -Math.sin(owner.yaw);
+      tx = ox - rx * 1.6 - fx * 1.4; tz = oz - rz * 1.6 - fz * 1.4;
+      const d = Math.hypot(ox - e.x, oz - e.z);
+      speed = d > 8 ? 5.6 : d > 2.5 ? 4.4 : 0;
+      if (d > 24 || Math.abs(owner.y - e.y) > 12) { e.x = tx; e.z = tz; e.y = owner.y + 0.2; e.vx = e.vy = e.vz = 0; }
+    }
+    let dx = tx - e.x, dz = tz - e.z;
+    const dl = Math.hypot(dx, dz);
+    if (dl < 0.4) speed = 0;
+    if (dl > 0) { dx /= dl; dz /= dl; }
+    const k = Math.min(1, dt * (e.onGround ? 10 : 3));
+    e.vx += (dx * speed - e.vx) * k; e.vz += (dz * speed - e.vz) * k;
+    if (e.inLiquid) e.vy = Math.min(e.vy + 25 * dt, 2.5);
+    const r = stepBody(this.world, e, dt, { gravity: 30, groundFriction: 0.0005 });
+    if ((r.hitX || r.hitZ) && e.onGround && speed > 0 && e.jumpCd <= 0) { e.vy = 8.6; e.jumpCd = 0.35; }
+    e.walk = Math.min(1, Math.hypot(e.vx, e.vz) / 4.3);
+    const look = speed > 0 && dl > 0.4 ? Math.atan2(-dx, -dz) : Math.atan2(-(ox - e.x), -(oz - e.z));
+    let dy = look - e.yaw; while (dy > Math.PI) dy -= Math.PI * 2; while (dy < -Math.PI) dy += Math.PI * 2;
+    e.yaw += dy * Math.min(1, dt * 8);
+    e.pitch = 0;
+    e.talkT -= dt;
+    if (e.talkT <= 0) { e.talkT = 150 + this.rnd() * 200; this.veritySay(e, owner, jennyIdle(this, e, owner)); }
   }
 
   persistData() {

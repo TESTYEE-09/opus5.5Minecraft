@@ -126,6 +126,8 @@ shaped('assault_rifle', 1, ['III', 'GIW', '  W'], { I: 'iron_ingot', G: 'gunpowd
 shaped('shotgun', 1, ['II ', 'IGW'], { I: 'iron_ingot', G: 'gunpowder', W: '#planks' });
 shaped('sniper_rifle', 1, ['DII', 'IGW', '  W'], { D: 'diamond', I: 'iron_ingot', G: 'gunpowder', W: '#planks' });
 // Verity can be remade if lost
+shapeless('jenny', 1, ['gold_ingot', 'pink_tulip', 'white_wool']);
+shapeless('jenny', 1, ['gold_ingot', 'poppy', 'white_wool']);
 shapeless('verity', 1, ['white_wool', 'black_wool', 'string', 'string']);
 
 function matches(spec, id) {

@@ -158,3 +158,26 @@ export function verityIdle(server, e, p) {
   if (u < 45) return pick(['Where were you?', 'You walk too fast.', night ? 'I don\'t like the dark.' : 'Can we stay here a while?', 'Do you ever think about me when I\'m in your pocket?', 'I counted your footsteps today.'], r);
   return pick([`${p.name}.`, 'Don\'t look behind you.', 'I watched you sleep.', 'You left me alone.', 'Something is wrong with me.', 'I can hear your heart.', 'I\'m sorry for what happens later.', 'Turn around.'], r);
 }
+
+// ------------------------------------------------------------------ Jenny: a cheerful adventuring partner
+export function jennyReply(server, e, p, raw) {
+  const r = server.rnd;
+  const text = raw.toLowerCase().replace(/[!.,]/g, ' ').replace(/\s+/g, ' ').trim().replace(/^(hey |ok |hi |@)?jenny\b[ ,:]*/, '');
+  if (!text) return pick(['Yep?', `What's up, ${p.name}?`, "I'm here!"], r);
+  if (/\b(hi|hello|hey|yo|sup)\b/.test(text)) return pick([`Hey ${p.name}!`, 'Hi! Ready for an adventure?', 'Hello hello!'], r);
+  if (/\b(who are you|what are you|your name)\b/.test(text)) return "I'm Jenny! Explorer, monster-basher, and your adventuring partner.";
+  if (/\b(outfit|clothes|dress|colour|color|wear)\b/.test(text)) return "Give me any wool and I'll wear that colour!";
+  if (/\b(trade|buy|sell|shop)\b/.test(text)) return "Bring me gold, emeralds or diamonds and I'll trade you something good. Food heals me too!";
+  if (/\b(how are you|you ok|feeling)\b/.test(text)) return e.health < 20 ? 'A bit beaten up. Got any food?' : pick(["I'm great!", "Never better. Let's find some diamonds!"], r);
+  if (/\b(love you|thank|thanks|best|awesome|cool)\b/.test(text)) return pick(["Aww, you're the best too!", 'Teamwork!', 'Any time!'], r);
+  if (/\b(dance|joke)\b/.test(text)) return pick(["Why do skeletons never fight each other? They don't have the guts!", '*does a little dance*', 'What do you call a sleeping zombie? A snore-ing dead!'], r);
+  if (/\b(go home|bye|leave)\b/.test(text)) return 'Sneak and right-click me to send me home. Use my card to call me back!';
+  const proxy = { kind: 'verity', unease: 0, get x() { return e.x; }, get y() { return e.y; }, get z() { return e.z; }, get mode() { return e.mode; }, set mode(v) { e.mode = v; }, get home() { return e.home; }, set home(v) { e.home = v; } };
+  const ans = verityReply(server, proxy, p, raw.replace(/jenny/ig, ''));
+  return ans && !/Verity|helper friend|pocket|another me/.test(ans) ? ans : pick(['Hmm, not sure! Try asking where something is, or how to craft something.', 'No idea, but I bet we can find out together.'], r);
+}
+export function jennyIdle(server) {
+  const t = server.time % DAY_TICKS;
+  const night = t > 13000 && t < 23000;
+  return pick(night ? ["It's getting dark. I've got your back.", 'Monsters out tonight. Stay close!', 'Want to build a shelter?'] : ['Nice day for exploring!', 'Have you seen the floating islands? So pretty.', 'I could go for some bread.', "Bring me gold and I'll trade you something!", 'Race you to that hill!'], server.rnd);
+}

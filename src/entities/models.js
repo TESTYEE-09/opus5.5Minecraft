@@ -104,6 +104,7 @@ export function paintPlayerSkin(look, kind = 'player') {
   if (kind === 'zombie') { skin = '#5a9a52'; shirt = '#2f8a9a'; pants = '#3a3a8a'; hair = '#2f5a2a'; }
   if (kind === 'skeleton') { skin = '#c8c8c0'; shirt = '#b8b8b0'; pants = '#a8a8a0'; hair = '#c8c8c0'; }
   if (kind === 'verity') { skin = '#f3e9e6'; shirt = '#f6f6f8'; pants = '#f6f6f8'; hair = '#121016'; look = { ...look, hairStyle: 1 }; }
+  if (kind === 'jenny') { hair = '#a8452a'; look = { ...look, hairStyle: 1, eyes: '#2f7a3a' }; skin = '#f2d0b4'; }
   if (kind === 'verity_demon') { skin = '#c9a01e'; shirt = '#b8901a'; pants = '#a8821a'; hair = '#c9a01e'; look = { ...look, hairStyle: 2 }; }
   // head
   s.boxFill('head', skin, 0.05, seed);
@@ -284,7 +285,17 @@ export function smileyTexture(demon) {
   return t;
 }
 
-export function buildMob(kind, renderer) {
+const JENNY_OUTFITS = ['#e9ecec', '#8e8e86', '#3e4447', '#141519', '#a12722', '#f07613', '#f8c527', '#70b919', '#3a9a5a', '#158991', '#3aafd9', '#35399d', '#792aac', '#bd44b3', '#ed8dac', '#724728'];
+export function buildMob(kind, renderer, outfit = 8) {
+  if (kind === 'jenny') {
+    const shirt = JENNY_OUTFITS[outfit] || JENNY_OUTFITS[8];
+    const c = new THREE.Color(shirt).multiplyScalar(0.55);
+    const skin = paintPlayerSkin({ shirt, pants: '#' + c.getHexString(), skin: '#f2d0b4' }, 'jenny');
+    const mat = renderer.entityMaterial(skin.texture());
+    const m = buildHumanoid(skin, mat, { scale: 0.92 });
+    m.userData.mat = mat; m.userData.height = 1.8;
+    return m;
+  }
   if (kind === 'verity') {
     // Verity: a worn yellow smiley ball with black eyes and a wide toothy grin
     const mat = renderer.entityMaterial(smileyTexture(false));

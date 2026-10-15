@@ -379,6 +379,7 @@ item('shotgun', { stack: 1, gun: { dmg: 3, cd: 0.8, mag: 6, spread: 0.075, auto:
 item('sniper_rifle', { stack: 1, gun: { dmg: 20, cd: 1.25, mag: 5, spread: 0.05, scopedSpread: 0.0008, auto: false, range: 160, recoil: 0.09, pellets: 1, reload: 2.0, snd: 'gun.sniper', reloadSnd: 'bolt', zoom: 0.28, scope: true } });
 item('bullets', { display: 'Bullets' });
 item('verity', { stack: 1, display: 'Verity', verity: true });
+item('jenny', { stack: 1, display: 'Jenny', jenny: true });
 export const ITEM_COUNT = nextItem;
 
 export function itemDef(id) { return ITEMS[id]; }

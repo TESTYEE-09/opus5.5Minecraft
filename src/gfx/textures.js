@@ -1014,6 +1014,14 @@ ICON.assault_rifle = (p) => gun(p, [[0, 6, 3, 8, WD], [0, 6, 3, 6, WL], [4, 5, 1
 ICON.shotgun = (p) => gun(p, [[0, 7, 4, 9, WD], [0, 7, 4, 7, WL], [5, 6, 9, 8, GM], [5, 6, 9, 6, GL], [10, 6, 15, 6, GD], [10, 7, 15, 7, GM], [10, 8, 13, 8, WD], [6, 9, 7, 10, GD]]);
 ICON.sniper_rifle = (p) => gun(p, [[0, 7, 4, 9, WD], [0, 7, 4, 7, WL], [5, 6, 10, 8, GM], [11, 7, 15, 7, GD], [5, 3, 9, 4, GD], [4, 3, 4, 4, '#4a90c0'], [6, 5, 7, 5, GD], [7, 9, 8, 10, GD], [8, 9, 8, 11, GD]]);
 ICON.bullets = (p) => { clearAll(p); for (const x of [3, 7, 11]) { p.rect(x, 5, x + 2, 6, '#c8c8c8'); p.rect(x, 7, x + 2, 12, '#d8a840'); p.rect(x, 7, x, 12, '#f0d070'); } p.outline('#2a1a08'); };
+ICON.jenny = (p) => {
+  clearAll(p);
+  p.rect(3, 1, 12, 14, '#f4ede0'); p.rect(3, 1, 12, 1, '#5aa0d8'); p.rect(3, 14, 12, 14, '#5aa0d8');
+  p.rect(5, 3, 10, 4, '#a8452a'); p.rect(4, 4, 4, 10, '#a8452a'); p.rect(11, 4, 11, 10, '#a8452a');
+  p.rect(5, 5, 10, 9, '#f2d0b4'); p.set(6, 6, hex('#2f7a3a')); p.set(9, 6, hex('#2f7a3a')); p.rect(7, 8, 8, 8, '#d88080');
+  p.rect(5, 10, 10, 12, '#3a9a5a'); p.rect(7, 10, 8, 10, '#f2d0b4');
+  p.outline('#1a1410');
+};
 ICON.verity = (p) => {
   clearAll(p);
   for (let y = 0; y < 16; y++) for (let x = 0; x < 16; x++) {
