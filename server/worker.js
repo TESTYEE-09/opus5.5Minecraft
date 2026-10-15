@@ -7,12 +7,14 @@ import { DurableObject } from 'cloudflare:workers';
 const CORS = { 'Access-Control-Allow-Origin': '*', 'Access-Control-Allow-Headers': '*' };
 const MAX_PLAYERS = 40;
 const MAX_MSG = 256 * 1024;
+const MIN_CLIENT = 2;
 
 export default {
   async fetch(req, env) {
     const url = new URL(req.url);
     if (req.method === 'OPTIONS') return new Response(null, { headers: CORS });
-    const stub = env.WORLD.get(env.WORLD.idFromName('main'));
+    // 'world2' replaced 'main' after the first water code flooded it; it imports main's edits once.
+    const stub = env.WORLD.get(env.WORLD.idFromName('world2'));
     if (url.pathname === '/world') {
       if (req.headers.get('Upgrade') !== 'websocket') return new Response('expected websocket', { status: 426, headers: CORS });
       return stub.fetch(req);
@@ -50,7 +52,7 @@ export class WorldDO extends DurableObject {
     }
     // migration 1: the first water-flow algorithm flooded hillsides. Drop every liquid edit
     // (block ids 29-42 are water, flowing water, lava and flowing lava) so the terrain underneath returns.
-    if ((this.meta.mig || 0) < 1) {
+    if ((this.meta.mig || 0) < 2) {
       let removed = 0;
       for (const [col, m] of this.edits) {
         for (const [i, id] of m) if (id >= 29 && id <= 42) { m.delete(i); removed++; this.dirty.add(col); }
@@ -60,14 +62,56 @@ export class WorldDO extends DurableObject {
         if (!m.size) { this.edits.delete(col); this.sql.exec('DELETE FROM chunks WHERE col = ?', col); }
       }
       this.flush();
-      this.meta.mig = 1;
-      this.sql.exec('INSERT INTO kv (k, v) VALUES (?, ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v', 'mig', '1');
+      this.meta.mig = 2;
+      this.sql.exec('INSERT INTO kv (k, v) VALUES (?, ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v', 'mig', '2');
       this.meta.cleaned = removed;
     }
   }
 
+  // One-time import of block edits from the original instance, dropping the flood water.
+  async importOld() {
+    if (this.meta.imported) return;
+    let got = 0, kept = 0;
+    try {
+      const old = this.env.WORLD.get(this.env.WORLD.idFromName('main'));
+      const resp = await old.fetch('https://internal/world', { headers: { Upgrade: 'websocket' } });
+      const ws = resp.webSocket;
+      if (ws) {
+        ws.accept();
+        await new Promise((resolve) => {
+          const timer = setTimeout(resolve, 25000);
+          ws.addEventListener('message', (ev) => {
+            let m; try { m = JSON.parse(ev.data); } catch (e) { return; }
+            if (m.t === 'edits') {
+              for (const [col, arr] of m.list) {
+                let mp = this.edits.get(col);
+                for (let i = 0; i < arr.length; i += 2) {
+                  got++;
+                  if (arr[i + 1] >= 29 && arr[i + 1] <= 42) continue;
+                  if (!mp) { mp = new Map(); this.edits.set(col, mp); }
+                  mp.set(arr[i], arr[i + 1]); kept++;
+                  this.dirty.add(col);
+                }
+              }
+            } else if (m.t === 'welcome') {
+              if (m.time !== undefined) this.meta.time = m.time;
+              clearTimeout(timer); resolve();
+            }
+          });
+          ws.send(JSON.stringify({ t: 'hello', name: 'Archivist', token: '' }));
+        });
+        try { ws.close(); } catch (e) { /* ignore */ }
+      }
+    } catch (e) { /* no old world: start fresh */ }
+    this.flush();
+    this.meta.imported = { got, kept };
+    this.meta.cleaned = got - kept;
+    this.sql.exec('INSERT INTO kv (k, v) VALUES (?, ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v', 'imported', JSON.stringify(this.meta.imported));
+  }
+
   async fetch(req) {
     const url = new URL(req.url);
+    if (!this.meta.imported && url.hostname !== 'internal') await this.ctx.blockConcurrencyWhile(() => this.importOld());
     if (url.pathname === '/status') {
       return new Response(JSON.stringify({ online: this.sessions.size, names: [...this.sessions.values()].map(s => s.name), cleaned: this.meta.cleaned }), { headers: { ...CORS, 'content-type': 'application/json' } });
     }
@@ -92,6 +136,8 @@ export class WorldDO extends DurableObject {
   sendTo(id, m) { const s = this.sessions.get(id); if (s) this.send(s.ws, m); }
 
   hello(ws, m) {
+    // outdated tabs run old simulation code (the first one flooded the world): make them refresh
+    if ((m.v || 0) < MIN_CLIENT) { this.send(ws, { t: 'outdated' }); ws.close(4000, 'outdated'); return 0; }
     if (this.sessions.size >= MAX_PLAYERS) { this.send(ws, { t: 'full' }); ws.close(1013, 'full'); return 0; }
     const id = this.nextId++;
     let name = String(m.name || 'Player').replace(/[^\w \-.]/g, '').trim().slice(0, 16) || 'Player';
