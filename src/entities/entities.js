@@ -39,7 +39,7 @@ export class EntityViews {
       const id = s[0];
       seen.add(id);
       let v = this.ents.get(id);
-      if (v && (v.kind !== s[2] || (v.mobKind === 'jenny' && v.outfit !== (s[9] >> 5)))) { this.removeView(id); v = null; }   // Verity changing form
+      if (v && v.kind !== s[2]) { this.removeView(id); v = null; }   // Verity changing form
       if (!v) { v = this.createView(s); if (!v) continue; this.ents.set(id, v); }
       v.owner = s[14] || 0;
       v.buf.push({ t: now, x: s[3], y: s[4], z: s[5], yaw: s[6], pitch: s[7], walk: s[8], extra: s[9], flap: s[13] });
@@ -57,9 +57,7 @@ export class EntityViews {
     const v = { id: s[0], type, kind: s[2], buf: [], lastSeen: this.clock, phase: 0, hurt: 0, age: 0 };
     if (type === 'mob') {
       v.mobKind = MOB_KINDS[s[2]];
-      v.outfit = s[9] >> 5;
-      obj = buildMob(v.mobKind, this.r, v.outfit);
-      if (v.mobKind === 'jenny') { const sw = itemMesh(ITEMS.findIndex(i => i && i.name === 'iron_sword'), this.r); sw.scale.setScalar(0.6); sw.position.set(-0.05, -0.62, -0.15); sw.rotation.set(-Math.PI / 2 + 0.3, Math.PI / 2, 0); obj.userData.parts.rarm.add(sw); }
+      obj = buildMob(v.mobKind, this.r);
       const sz = MOB_SIZE[v.mobKind] || [0.4, 1];
       v.hw = sz[0]; v.h = sz[1];
       if (v.mobKind === 'skeleton') {

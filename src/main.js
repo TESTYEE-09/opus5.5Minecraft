@@ -331,12 +331,9 @@ class Game {
       // Verity was out when you left: she comes back with you
       if (welcome.player.verityOut && !this.player.inventory.count(I.verity)) this.player.inventory.add(I.verity, 1);
       this.verityUnease = welcome.player.verityUnease || 0;
-      this.jennyOutfit = welcome.player.jennyOutfit;
-      if ((welcome.player.jennyOut || !welcome.player.gotJenny) && !this.player.inventory.count(I.jenny)) { this.player.inventory.add(I.jenny, 1); if (!welcome.player.gotJenny) setTimeout(() => this.ui.chat('§bJenny joined your inventory! Right-click her card to call her.'), 3000); }
     } else {
       this.player.x = spawn[0] + 0.5; this.player.y = spawn[1]; this.player.z = spawn[2] + 0.5; this.needsGround = true;
       this.player.inventory.add(I.verity, 1);
-      this.player.inventory.add(I.jenny, 1);
       this.firstVerity = true;
     }
     if (welcome.authority === welcome.id) this.becomeAuthority({ time: welcome.time, weather: welcome.weather, be: welcome.be, players: welcome.players, quiet: true });
@@ -405,8 +402,6 @@ class Game {
       data.gamemode = 'survival';
       const mine = this.myVerity();
       data.verityOut = !!mine;
-      const jen = [...this.entities.ents.values()].find(v => v.owner === this.myId && v.mobKind === 'jenny');
-      data.gotJenny = true; data.jennyOut = !!jen; if (jen) data.jennyOutfit = jen.outfit;
       data.verityUnease = mine ? mine.unease || 0 : this.verityUnease || 0;
       this.net.send({ t: 'save', data });
       if (this.server) this.net.send(this.server.persistData());
@@ -480,7 +475,6 @@ class Game {
         if (this.pendingBE === m.key) { this.pendingBE = null; this.ui.openInventory(BLOCKS[this.world.getBlock(...m.key.split(',').map(Number))].be || 'chest', { key: m.key, be: structuredClone(m.data) }); }
         else this.ui.updateBE(m.key, structuredClone(m.data));
         break;
-      case 'take': { const i = this.player.inventory.slots.findIndex(s => s && s.id === m.item); if (i >= 0) { this.player.inventory.decSlot(i, m.n || 1); this.ui.hudDirty(); } break; }
       case 'beGone': if (this.ui.inv && this.ui.inv.key === m.key) this.ui.closeInventory(); break;
       default: break;
     }
@@ -838,7 +832,7 @@ class Game {
     // entities
     if (target && press) {
       const v = target.v;
-      if (v.type === 'mob') { this.send({ t: 'use', e: v.id, item: held ? held.id : null, sneak: p.sneaking }); this.swing(); }
+      if (v.type === 'mob') { this.send({ t: 'use', e: v.id, item: held ? held.id : null }); this.swing(); }
       return;
     }
     // block actions (unless sneaking with an item)
@@ -850,13 +844,6 @@ class Game {
       if (def.use === 'tnt' && it && (it.name === 'flint_and_steel' || held.id === B.torch)) { this.send({ t: 'ignite', x: hit.x, y: hit.y, z: hit.z }); this.swing(); if (it.durability) this.wearTool(1); return; }
     }
     if (!held) return;
-    if (it.jenny && press) {
-      const [x, y, z] = hit && hit.dist < 5 ? this.placeAt(hit) : [Math.floor(p.x - Math.sin(p.yaw) * 2), Math.floor(p.y), Math.floor(p.z - Math.cos(p.yaw) * 2)];
-      this.send({ t: 'jenny', p: [x + 0.5, y + 0.05, z + 0.5], outfit: this.jennyOutfit ?? 8 });
-      p.inventory.decSlot(p.selected); this.swing(); this.ui.hudDirty();
-      this.audio.play('pop', { vol: 0.5 });
-      return;
-    }
     // Verity: place her where you point, or throw her
     if (it.verity && press) {
       const e = this.eyePos(), d = this.lookDir();
