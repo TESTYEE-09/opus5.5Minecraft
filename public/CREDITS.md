@@ -1,4 +1,4 @@
-# Lumencraft credits
+# Nomae Craft credits
 
 All block, item and mob textures, models, terrain, shaders and code are original and generated in code.
 

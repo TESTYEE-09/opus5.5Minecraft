@@ -11,5 +11,5 @@ export const colKey = (cx, cz) => (cx + 32768) * 65536 + (cz + 32768);
 export const DAY_TICKS = 24000;    // one in-game day
 export const TICK_RATE = 20;       // server ticks per second
 
-export const GAME_NAME = 'Lumencraft';
+export const GAME_NAME = 'Nomae Craft';
 export const NET_PREFIX = 'lumencraft-o55-';

@@ -36,7 +36,7 @@ export class RelayNet {
         if (!settled) {
           if (m.t === 'edits') { edits.push(...m.list); return; }
           if (m.t === 'full') { clearTimeout(timer); fail('The world is full right now. Try again in a minute.'); return; }
-          if (m.t === 'outdated') { clearTimeout(timer); fail('A new version of Lumencraft is out. Refresh the page to play.'); return; }
+          if (m.t === 'outdated') { clearTimeout(timer); fail('A new version of Nomae Craft is out. Refresh the page to play.'); return; }
           if (m.t === 'welcome') { clearTimeout(timer); settled = true; m.edits = edits; resolve(m); return; }
           return;
         }

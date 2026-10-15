@@ -1,4 +1,4 @@
-# Lumencraft
+# Nomae Craft
 
 A voxel sandbox that runs in the browser. There is one persistent world and everyone who opens the page plays in it together.
 

@@ -1294,7 +1294,7 @@ class Game {
       if (!b) return;
       const a = document.createElement('a');
       a.href = URL.createObjectURL(b);
-      a.download = `lumencraft-${new Date().toISOString().replace(/[:.]/g, '-')}.png`;
+      a.download = `nomae-craft-${new Date().toISOString().replace(/[:.]/g, '-')}.png`;
       a.click();
       setTimeout(() => URL.revokeObjectURL(a.href), 2000);
       this.ui.toast('Screenshot saved');
