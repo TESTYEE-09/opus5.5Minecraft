@@ -488,8 +488,7 @@ void main() {
 
 // ------------------------------------------------------------------ entities (box models, held items)
 export const ENTITY_VERT = /* glsl */`
-attribute vec3 normal;
-attribute vec2 uv;
+// position, normal and uv are declared by three.js for ShaderMaterial
 varying vec3 vWorld;
 varying vec3 vN;
 varying vec2 vUv;
