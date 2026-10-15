@@ -71,7 +71,19 @@ export class Server {
     this.chat(`§e${p.name} left the game`);
   }
   send(id, msg) { const p = this.players.get(id); if (p) p.send(msg); }
-  broadcast(msg, except) { for (const p of this.players.values()) if (p.id !== except) p.send(msg); }
+  broadcast(msg, except) {
+    if (this.relay) {
+      // one relayed copy for everyone remote, direct delivery for the local player
+      for (const p of this.players.values()) if (p.local && p.id !== except) p.send(msg);
+      this.relay.out(0, msg, except);
+      return;
+    }
+    for (const p of this.players.values()) if (p.id !== except) p.send(msg);
+  }
+  protectedAt(x, z) {
+    const s = this.meta.spawn;
+    return !!(s && this.meta.protect && Math.abs(x - s[0]) <= this.meta.protect && Math.abs(z - s[2]) <= this.meta.protect);
+  }
   chat(text, from) { this.broadcast({ t: 'chat', text, from }); }
   fx(msg, except) { this.broadcast({ t: 'fx', ...msg }, except); }
 
@@ -160,6 +172,7 @@ export class Server {
     const { x, y, z, id } = m;
     if (y < 0 || y >= H) return;
     const old = this.world.getBlock(x, y, z);
+    if (this.protectedAt(x, z) && p.gamemode !== 'creative') { this.send(p.id, { t: 'bs', a: [x, y, z, old] }); return; }
     if (m.expect !== undefined && old !== m.expect && id !== 0) {
       // placement raced with another change: tell the client the truth
       this.send(p.id, { t: 'bs', a: [x, y, z, old] });
@@ -981,8 +994,10 @@ export class Server {
     // flush block changes to remote players
     if (this.pendingBlocks.length) {
       const a = this.pendingBlocks; this.pendingBlocks = [];
-      for (const p of this.players.values()) if (!p.local) p.send({ t: 'bs', a });
+      if (this.relay) this.relay.out(0, { t: 'bs', a });
+      else for (const p of this.players.values()) if (!p.local) p.send({ t: 'bs', a });
     }
+    if (this.relay && t % 200 === 0) this.relay.persist(this.persistData());
     // entity snapshots
     const snapEvery = 2;
     for (const p of this.players.values()) {
@@ -1008,6 +1023,10 @@ export class Server {
       out.push([e.id, ETYPE[e.type], kind, r3(e.x), r3(e.y), r3(e.z), r3(e.yaw !== undefined ? e.yaw : Math.atan2(-(e.vx || 0), -(e.vz || 0))), r3(e.pitch || 0), r3(e.walk || 0), extra, r3(e.vx || 0), r3(e.vy || 0), r3(e.vz || 0), r3(e.flap || 0)]);
     }
     return out;
+  }
+
+  persistData() {
+    return { t: 'persist', be: [...this.blockEntities.entries()], time: this.time, weather: { rain: this.weather.rain, thunder: this.weather.thunder, timer: this.weather.timer } };
   }
 
   serialize() {

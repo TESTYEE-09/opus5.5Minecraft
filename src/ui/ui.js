@@ -18,7 +18,7 @@ const h = (tag, attrs = {}, ...kids) => {
   return e;
 };
 const SPLASHES = ['Now with sky islands!', 'Made of light!', 'Bring a friend!', 'Cherry blossoms!', 'Fireflies at night!', 'Look up after dark!', 'Generative piano!', '100% procedural!', 'Waterfalls from the sky!', 'Crystal tools!', 'Also try fishing! (not yet)', 'Shaders included!', 'Runs in a browser!', 'Mind the creepers… wait'];
-const TIPS = ['Crystal ore only grows inside the floating islands. Crystal tools are the fastest in the world.', 'Hold wheat to lead cows and sheep. Chickens prefer seeds.', 'Open the pause menu and press “Open to Friends” to get a room code.', 'Sleep in a bed to skip the night — and set your respawn point.', 'Torches keep monsters from spawning. Glowstone lights up deep caves.', 'The recipe book in your inventory fills the crafting grid for you.', 'Snowy biomes have auroras on clear nights.', 'Press F2 for a screenshot and F1 to hide the HUD.', 'Water and lava make obsidian. Only diamond or crystal can mine it.', 'Shift-click moves stacks between your inventory and containers.'];
+const TIPS = ['Crystal ore only grows inside the floating islands. Crystal tools are the fastest in the world.', 'Hold wheat to lead cows and sheep. Chickens prefer seeds.', 'Everyone plays in the same world — say hi with T.', 'Sleep in a bed to skip the night — and set your respawn point.', 'Torches keep monsters from spawning. Glowstone lights up deep caves.', 'The recipe book in your inventory fills the crafting grid for you.', 'Snowy biomes have auroras on clear nights.', 'Press F2 for a screenshot and F1 to hide the HUD.', 'Water and lava make obsidian. Only diamond or crystal can mine it.', 'Shift-click moves stacks between your inventory and containers.'];
 
 function statIcons() {
   const mk = (rows, pal) => {
@@ -98,104 +98,41 @@ export class UI {
   screen_title() {
     const splash = SPLASHES[Math.floor(Math.random() * SPLASHES.length)];
     const p = this.game.profile;
+    this.onlineEl = h('div', { class: 'online' });
+    this.updateOnline(this.game.online);
     return h('div', { class: 'screen' },
       h('div', { id: 'title', class: 'screen' },
         h('div', { class: 'logo' }, GAME_NAME.toUpperCase(), h('span', { class: 'splash' }, splash)),
-        h('div', { class: 'logo-sub' }, 'A WORLD MADE OF LIGHT'),
+        h('div', { class: 'logo-sub' }, 'ONE WORLD · EVERYONE'),
         h('div', { class: 'menu' },
-          h('button', { class: 'btn primary', onclick: () => { this.click(); this.show('worlds'); } }, 'Singleplayer'),
-          h('button', { class: 'btn violet', onclick: () => { this.click(); this.show('multiplayer'); } }, 'Play with Friends'),
+          h('button', { class: 'btn primary play', onclick: () => { this.click(); this.game.playShared(); } }, 'Play'),
+          this.onlineEl,
           h('div', { class: 'row' },
             h('button', { class: 'btn', onclick: () => { this.click(); this.show('character', { back: 'title' }); } }, 'Character'),
             h('button', { class: 'btn', onclick: () => { this.click(); this.show('settings', { back: 'title' }); } }, 'Settings'),
           ),
         ),
         h('div', { class: 'foot' },
-          h('span', {}, `${GAME_NAME} 1.0 · hello, ${p.name}`),
+          h('span', {}, `${GAME_NAME} 1.1 · playing as ${p.name}`),
           h('span', {}, 'Textures, terrain & music generated in code · ', h('a', { href: './CREDITS.md', target: '_blank' }, 'credits')),
         ),
       ),
     );
   }
-
-  screen_worlds(opts) {
-    const list = h('div', { class: 'worlds' }, h('div', { class: 'empty' }, 'Loading worlds…'));
-    let sel = null;
-    const playBtn = h('button', { class: 'btn primary', disabled: true, onclick: () => { if (sel) { this.click(); this.game.playWorld(sel, { host: opts.host }); } } }, opts.host ? 'Host World' : 'Play Selected');
-    const delBtn = h('button', { class: 'btn danger', disabled: true, onclick: async () => {
-      if (!sel) return;
-      if (!confirm('Delete this world forever?')) return;
-      await this.game.deleteWorld(sel); this.show('worlds', opts);
-    } }, 'Delete');
-    this.game.listWorlds().then((ws) => {
-      list.innerHTML = '';
-      if (!ws.length) list.append(h('div', { class: 'empty' }, 'No worlds yet — create your first one.'));
-      for (const w of ws) {
-        const row = h('div', { class: 'world', ondblclick: () => this.game.playWorld(w.id, { host: opts.host }), onclick: () => {
-          sel = w.id; list.querySelectorAll('.world').forEach(x => x.classList.remove('sel')); row.classList.add('sel');
-          playBtn.disabled = false; delBtn.disabled = false; this.game.audio.play('select', { vol: 0.4 });
-        } },
-        h('div', { class: 'thumb', style: w.thumb ? { backgroundImage: `url(${w.thumb})` } : {} }),
-        h('div', { class: 'meta' }, h('div', { class: 'name' }, w.name), h('div', { class: 'sub' }, `${w.gamemode === 'creative' ? 'Creative' : 'Survival'} · seed ${w.seed} · ${w.played ? new Date(w.played).toLocaleString() : 'never played'}`)));
-        list.append(row);
-      }
-    });
-    return h('div', { class: 'screen dim' }, h('div', { class: 'panel' },
-      h('h2', {}, opts.host ? 'Host a world for friends' : 'Your worlds'),
-      list,
-      h('div', { class: 'row', style: { marginTop: '14px' } },
-        playBtn,
-        h('button', { class: 'btn violet', onclick: () => { this.click(); this.show('create', opts); } }, 'Create New World'),
-        h('div', { class: 'grow' }),
-        delBtn,
-        h('button', { class: 'btn', onclick: () => { this.click(); this.show(opts.host ? 'multiplayer' : 'title'); } }, 'Back'),
-      ),
-    ));
+  updateOnline(n) {
+    if (!this.onlineEl) return;
+    this.onlineEl.innerHTML = '';
+    if (n === null || n === undefined) this.onlineEl.append(h('span', { class: 'dot off' }), 'Checking the world…');
+    else this.onlineEl.append(h('span', { class: 'dot' }), n === 0 ? 'Nobody online — the world is waiting for you' : `${n} player${n === 1 ? '' : 's'} online now`);
   }
 
-  screen_create(opts) {
-    const name = h('input', { class: 'input', value: 'New World', maxlength: 32 });
-    const seed = h('input', { class: 'input', placeholder: 'Leave blank for random' });
-    let mode = 'survival', cheats = false;
-    const seg = h('div', { class: 'seg' },
-      ...['survival', 'creative'].map(m => h('button', { class: m === mode ? 'on' : '', onclick: (e) => { mode = m; seg.querySelectorAll('button').forEach(b => b.classList.remove('on')); e.target.classList.add('on'); this.click(); } }, m[0].toUpperCase() + m.slice(1))));
-    const tg = h('div', { class: 'toggle', onclick: () => { cheats = !cheats; tg.classList.toggle('on', cheats); this.click(); } });
-    return h('div', { class: 'screen dim' }, h('div', { class: 'panel', style: { width: 'min(460px, calc(100vw - 32px))' } },
-      h('h2', {}, 'Create a world'),
-      h('div', { class: 'field' }, h('label', {}, 'WORLD NAME'), name),
-      h('div', { class: 'field' }, h('label', {}, 'SEED'), seed),
-      h('div', { class: 'field' }, h('label', {}, 'GAME MODE'), seg),
-      h('div', { class: 'set' }, h('label', {}, 'Allow commands (/time, /give, /gamemode…)'), tg),
-      h('div', { class: 'row', style: { marginTop: '16px' } },
-        h('button', { class: 'btn primary grow', onclick: () => { this.click(); this.game.createWorld({ name: name.value.trim() || 'New World', seed: seed.value.trim(), gamemode: mode, cheats: cheats || mode === 'creative' }, { host: opts.host }); } }, 'Create World'),
-        h('button', { class: 'btn', onclick: () => { this.click(); this.show('worlds', opts); } }, 'Cancel'),
-      ),
-    ));
-  }
-
-  screen_multiplayer() {
-    const code = h('input', { class: 'input code-input', maxlength: 5, placeholder: 'ABCDE', value: this.game.pendingJoin || '' });
-    const name = h('input', { class: 'input', value: this.game.profile.name, maxlength: 16 });
-    const status = h('div', { class: 'muted', style: { minHeight: '22px', marginTop: '8px' } });
-    const join = async () => {
-      const c = code.value.trim().toUpperCase();
-      if (c.length < 5) { status.textContent = 'Enter the 5-letter room code your friend shared.'; return; }
-      this.game.setProfile({ name: name.value.trim() || 'Player' });
-      status.textContent = 'Connecting…';
-      try { await this.game.joinWorld(c); } catch (e) { status.textContent = e.message || String(e); }
-    };
-    code.addEventListener('keydown', (e) => { if (e.key === 'Enter') join(); });
-    setTimeout(() => code.focus(), 50);
-    return h('div', { class: 'screen dim' }, h('div', { class: 'panel', style: { width: 'min(560px, calc(100vw - 32px))' } },
-      h('h2', {}, 'Play with friends'),
-      h('div', { class: 'muted', style: { marginBottom: '16px', lineHeight: 1.5 } }, 'Worlds are hosted peer-to-peer straight from a browser — no server, no sign-up. The host keeps the world; everyone else joins with its room code.'),
-      h('h3', {}, 'Join a world'),
-      h('div', { class: 'row' }, code, h('button', { class: 'btn primary grow', onclick: join }, 'Join')),
-      status,
-      h('div', { class: 'field', style: { marginTop: '8px' } }, h('label', {}, 'YOUR NAME'), name),
-      h('h3', {}, 'Host a world'),
-      h('div', { class: 'row' },
-        h('button', { class: 'btn violet grow', onclick: () => { this.click(); this.game.setProfile({ name: name.value.trim() || 'Player' }); this.show('worlds', { host: true }); } }, 'Choose a world to host'),
+  screen_offline(opts) {
+    return h('div', { class: 'screen dim' }, h('div', { class: 'panel', style: { width: 'min(460px, calc(100vw - 32px))', textAlign: 'center' } },
+      h('h2', {}, opts.title || "Can't reach the world"),
+      h('div', { class: 'muted', style: { marginBottom: '18px', lineHeight: 1.5 } }, opts.text || ''),
+      h('div', { class: 'col' },
+        h('button', { class: 'btn primary', onclick: () => { this.click(); this.game.playShared(); } }, 'Try again'),
+        h('button', { class: 'btn', onclick: () => { this.click(); this.game.playOffline(); } }, 'Play offline instead'),
         h('button', { class: 'btn', onclick: () => { this.click(); this.show('title'); } }, 'Back'),
       ),
     ));
@@ -294,36 +231,16 @@ export class UI {
 
   screen_pause() {
     const g = this.game;
-    const share = h('div', { class: 'col', style: { marginTop: '6px' } });
-    const renderShare = () => {
-      share.innerHTML = '';
-      if (g.isClient) { share.append(h('div', { class: 'muted' }, `Connected to ${g.hostName || 'a friend'}’s world.`)); return; }
-      if (g.roomCode) {
-        const link = `${location.origin}${location.pathname}?join=${g.roomCode}`;
-        share.append(
-          h('div', { class: 'muted' }, 'Open to friends. Room code:'),
-          h('div', { style: { fontSize: '40px', letterSpacing: '10px', color: 'var(--accent)', textAlign: 'center' } }, g.roomCode),
-          h('div', { class: 'row' },
-            h('button', { class: 'btn small grow', onclick: () => { navigator.clipboard && navigator.clipboard.writeText(link); this.toast('Invite link copied'); } }, 'Copy invite link'),
-            h('button', { class: 'btn small grow', onclick: () => { navigator.clipboard && navigator.clipboard.writeText(g.roomCode); this.toast('Code copied'); } }, 'Copy code'),
-          ),
-          h('div', { class: 'muted', style: { fontSize: '14px' } }, `${g.playerCount()} player${g.playerCount() === 1 ? '' : 's'} online`),
-        );
-      } else {
-        share.append(h('button', { class: 'btn violet', onclick: async (e) => {
-          e.target.disabled = true; e.target.textContent = 'Opening…';
-          try { await g.openToFriends(); renderShare(); } catch (err) { e.target.textContent = 'Could not open: ' + (err.type || err.message || err); }
-        } }, 'Open to Friends'));
-      }
-    };
-    renderShare();
+    const names = g.playerNames();
     return h('div', { class: 'screen dim' }, h('div', { class: 'panel', style: { width: 'min(400px, calc(100vw - 32px))' } },
       h('h2', { style: { textAlign: 'center' } }, 'Game paused'),
       h('div', { class: 'col' },
         h('button', { class: 'btn primary', onclick: () => { this.click(); g.resume(); } }, 'Back to Game'),
-        share,
+        g.shared ? h('div', { class: 'players' },
+          h('div', { class: 'muted', style: { fontSize: '14px', marginBottom: '6px' } }, `${names.length} online`),
+          ...names.map(n => h('div', { class: 'pl' }, h('span', { class: 'dot' }), n))) : h('div', { class: 'muted', style: { textAlign: 'center' } }, 'Offline world'),
         h('button', { class: 'btn', onclick: () => { this.click(); this.show('settings', { back: 'pause' }); } }, 'Settings'),
-        h('button', { class: 'btn danger', onclick: () => { this.click(); g.quitToTitle(); } }, g.isClient ? 'Disconnect' : 'Save & Quit to Title'),
+        h('button', { class: 'btn danger', onclick: () => { this.click(); g.quitToTitle(); } }, g.shared ? 'Leave World' : 'Save & Quit'),
       ),
     ));
   }
@@ -425,9 +342,6 @@ export class UI {
     this.debugEl.classList.toggle('hidden', !g.debug);
     if (g.debug) this.debugEl.textContent = g.debugInfo();
     // room badge
-    const code = g.roomCode;
-    this.badge.classList.toggle('hidden', !code || !g.showBadge);
-    if (code) this.badge.innerHTML = `Friends can join with <b>${code}</b> · ${g.playerCount()} online`;
     this.updateNametags();
   }
 
@@ -860,7 +774,7 @@ export class UI {
       e.preventDefault();
       if (this.current === 'pause') this.game.resume();
       else if (this.current === 'settings' || this.current === 'character') this.show(this.game.inWorld() ? 'pause' : 'title');
-      else if (['worlds', 'create', 'multiplayer', 'message'].includes(this.current)) this.show('title');
+      else if (['offline', 'message'].includes(this.current)) this.show('title');
     }
   }
 }

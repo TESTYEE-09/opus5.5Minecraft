@@ -8,7 +8,7 @@ import { Hand } from './gfx/hand.js';
 import { World } from './world/world.js';
 import { WorldGen, BIOMES, BI } from './world/worldgen.js';
 import { Server } from './server/server.js';
-import { HostNet, ClientNet } from './net/net.js';
+import { RelayNet, fetchStatus } from './net/net.js';
 import { Player } from './game/player.js';
 import { Input } from './game/input.js';
 import { EntityViews } from './entities/entities.js';
@@ -35,6 +35,7 @@ const DEATH = {
   spider: 'was slain by a Spider', explosion: 'blew up', arrow: 'was shot', lightning: 'was struck by lightning', player: 'was slain', kill: 'died',
 };
 const ARMS = { pickaxe: 1, axe: 1, shovel: 1, hoe: 1 };
+const SHARED_SEED_TEXT = 'Lumencraft';
 
 class Game {
   constructor() {
@@ -81,9 +82,12 @@ class Game {
     window.addEventListener('resize', () => this.renderer.resize());
     window.addEventListener('beforeunload', () => { this.saveNow(); });
     document.addEventListener('visibilitychange', () => { if (document.hidden) this.saveNow(); });
-    this.pendingJoin = new URLSearchParams(location.search).get('join');
+    this.token = Save.loadLocal('token', null) || (crypto.randomUUID ? crypto.randomUUID() : String(Math.random()).slice(2) + Date.now());
+    Save.saveLocal('token', this.token);
+    this.online = null;
+    this.refreshStatus();
     this.startTitle();
-    if (this.pendingJoin) this.ui.show('multiplayer'); else this.ui.show('title');
+    this.ui.show('title');
     requestAnimationFrame((t) => this.loop(t));
   }
 
@@ -156,9 +160,18 @@ class Game {
   // ================================================================ sessions
   inWorld() { return this.state === 'playing' || this.state === 'paused' || this.state === 'dead'; }
   get isHost() { return !!this.server; }
-  get isClient() { return this.net instanceof ClientNet; }
-  get roomCode() { return this.net instanceof HostNet ? this.net.code : null; }
+  get isClient() { return !!this.net && !this.server; }
+  get shared() { return !!this.net; }
   playerCount() { return this.server ? this.server.players.size : this.playerInfos.size + 1; }
+  playerNames() {
+    if (this.server) return [...this.server.players.values()].map(p => p.name);
+    return [this.profile.name, ...[...this.playerInfos.values()].map(p => p.name)];
+  }
+  async refreshStatus() {
+    const st = await fetchStatus();
+    this.online = st ? st.online : null;
+    if (this.ui.current === 'title') this.ui.updateOnline && this.ui.updateOnline(this.online);
+  }
 
   listWorlds() { return Save.listWorlds(); }
   deleteWorld(id) { return Save.deleteWorld(id); }
@@ -223,7 +236,7 @@ class Game {
     this.ui.chat(`§7Welcome to §e${meta.name}§7. Press §fT§7 to chat, §fEsc§7 for the menu.`);
     if (!rec.player) this.ui.hint('<kbd>WASD</kbd> move · <kbd>Space</kbd> jump · <kbd>E</kbd> inventory · <kbd>Esc</kbd> menu', 9000);
     this.saveNow();
-    if (flags.host) { try { await this.openToFriends(); this.pause(); } catch (e) { this.ui.toast('Could not open to friends: ' + (e.type || e.message)); } }
+    void flags;
   }
 
   giveStarter() {
@@ -276,36 +289,28 @@ class Game {
     });
   }
 
-  async openToFriends() {
-    if (!this.server) throw new Error('Only the host can open the world');
-    if (this.net instanceof HostNet) return this.net.code;
-    const net = new HostNet(this.server, (kind, info) => {
-      if (kind === 'join') this.ui.toast(`<b>${info}</b> joined your world`);
-      if (kind === 'error') this.ui.toast('Network: ' + info);
-    });
-    const code = await net.open();
-    this.net = net;
-    this.showBadge = true;
-    setTimeout(() => { this.showBadge = false; }, 20000);
-    this.ui.chat(`§aYour world is open! Friends can join with code §e${code}`);
-    return code;
-  }
-
-  async joinWorld(code) {
+  // ---------------------------------------------------------------- the shared world
+  async playShared() {
     this.audio.start();
-    this.disposeWorld();
-    const net = new ClientNet((m) => this.onServer(m), (kind) => {
-      if (kind === 'closed' && this.inWorld()) { this.quitToTitle(true); this.ui.show('message', { title: 'Disconnected', text: 'The host closed the world or the connection was lost.' }); }
-    });
-    const hello = { t: 'hello', name: this.profile.name, look: this.profile.look };
-    const welcome = await net.join(code, hello);
     this.state = 'loading';
-    this.ui.show('loading', { text: 'Joining world…' });
+    this.ui.show('loading', { text: 'Connecting to the world…' });
+    this.disposeWorld();
+    const net = new RelayNet((m) => this.onRelay(m), () => this.onDisconnect());
+    let welcome;
+    try {
+      welcome = await net.connect({ t: 'hello', name: this.profile.name, look: this.profile.look, token: this.token });
+    } catch (e) {
+      this.state = 'title';
+      this.ui.show('offline', { text: e.message });
+      return;
+    }
     this.net = net;
-    this.joinCode = code;
     this.myId = welcome.id;
-    this.hostName = welcome.name;
-    this.world = new World(welcome.seed, { renderDist: this.settings.renderDist, materials: this.renderer.chunkMats });
+    if (welcome.name !== this.profile.name) this.ui.toast(`Someone called ${this.profile.name} is online — you're <b>${welcome.name}</b>`);
+    this.myName = welcome.name;
+    const seed = hashString(SHARED_SEED_TEXT);
+    this.ui.loading(0.02, 'Generating terrain…');
+    this.world = new World(seed, { renderDist: this.settings.renderDist, materials: this.renderer.chunkMats });
     for (const [k, arr] of welcome.edits) {
       const m = new Map();
       for (let i = 0; i < arr.length; i += 2) m.set(arr[i], arr[i + 1]);
@@ -314,32 +319,83 @@ class Game {
     this.renderer.scene.add(this.world.group);
     this.renderer.casterRoots = [this.world.group, this.entities.root];
     for (const p of welcome.players) this.playerInfos.set(p.id, { name: p.name, look: p.look });
-    this.time = welcome.time; this.dayCycle = welcome.dayCycle !== false;
-    this.weather.set(welcome.weather.rain, welcome.weather.thunder);
-    this.weather.rain = welcome.weather.rain;
-    this.cheats = welcome.cheats;
+    const spawn = this.findSpawn(seed);
+    this.rec = { meta: { id: 'shared', name: GAME_NAME, seed, seedText: SHARED_SEED_TEXT, spawn, gamemode: 'survival', cheats: false, protect: 10 } };
+    this.time = welcome.time ?? 1000;
+    const wt = welcome.weather || { rain: 0, thunder: 0 };
+    this.weather.set(wt.rain, wt.thunder); this.weather.rain = wt.rain;
     this.player = new Player(this);
-    this.player.gamemode = welcome.gamemode || 'survival';
-    const saved = Save.loadLocal(`client.${welcome.seed}.${this.profile.name}`, null);
-    this.clientSpawn = welcome.spawn || [0, 100, 0];
-    if (saved) this.player.load(saved);
-    else { this.player.x = this.clientSpawn[0] + 0.5; this.player.y = this.clientSpawn[1] + 1; this.player.z = this.clientSpawn[2] + 0.5; this.needsGround = true; }
-    this.rec = { meta: { name: welcome.name, spawn: this.clientSpawn } };
+    this.player.gamemode = 'survival';
+    if (welcome.player) { this.player.load(welcome.player); this.player.gamemode = 'survival'; }
+    else { this.player.x = spawn[0] + 0.5; this.player.y = spawn[1]; this.player.z = spawn[2] + 0.5; this.needsGround = true; }
+    if (welcome.authority === welcome.id) this.becomeAuthority({ time: welcome.time, weather: welcome.weather, be: welcome.be, players: welcome.players, quiet: true });
     await this.waitForSpawn();
+    if (this.server) this.server.meta.spawn = this.rec.meta.spawn;
+    if (!this.world) return;
     this.state = 'playing';
     this.ui.show(null);
     this.ui.hudDirty();
     this.input.lock();
-    this.ui.chat(`§aConnected to §e${welcome.name}§a.`);
+    const n = this.playerCount();
+    this.ui.chat(`§7Welcome to §e${GAME_NAME}§7 — one world, shared by everyone. ${n > 1 ? `§a${n - 1} other player${n > 2 ? 's' : ''} online.` : 'You are the only one here right now.'}`);
+    if (!welcome.player) this.ui.hint('<kbd>WASD</kbd> move · <kbd>Space</kbd> jump · <kbd>E</kbd> inventory · <kbd>T</kbd> chat · <kbd>Esc</kbd> menu', 9000);
+  }
+
+  // This browser runs the simulation for everyone (mobs, water, furnaces, time).
+  becomeAuthority(d) {
+    const meta = { ...this.rec.meta, time: d.time ?? this.time, weather: d.weather ? { rain: d.weather.rain || 0, thunder: d.weather.thunder || 0, timer: d.weather.timer || 6000 } : null, blockEntities: d.be || [] };
+    const server = new Server(this.world, meta);
+    server.hostId = -1;
+    server.relay = { out: (to, m, except) => this.net && this.net.out(to, m, except), persist: (data) => this.net && this.net.send(data) };
+    const me = { id: this.myId, local: true, name: this.myName || this.profile.name, look: this.profile.look, x: this.player.x, y: this.player.y, z: this.player.z, yaw: 0, pitch: 0, flags: 0, held: 0, gamemode: this.player.gamemode, send: (m) => this.onServer(m) };
+    me.alive = true;
+    server.players.set(me.id, me);
+    for (const p of d.players || []) { const r = this.remotePlayer(p); r.alive = true; server.players.set(p.id, r); }
+    this.server = server;
+    this.time = server.time;
+    if (!d.quiet) this.ui.toast('You are now keeping the world running');
+  }
+  remotePlayer(m) {
+    return { id: m.id, name: m.name, look: m.look || {}, x: 0, y: -200, z: 0, yaw: 0, pitch: 0, flags: 0, held: 0, gamemode: 'survival', send: (msg) => this.net && this.net.out(m.id, msg) };
+  }
+  onRelay(m) {
+    if (this.server) {
+      if (m.t === 'in') { this.server.receive(m.from, m.m); return; }
+      if (m.t === 'join') { this.server.addPlayer(this.remotePlayer(m)); this.ui.toast(`<b>${m.name}</b> joined`); return; }
+      if (m.t === 'leave') { this.server.removePlayer(m.id); return; }
+    }
+    if (m.t === 'becomeAuthority') { if (this.world && this.player) this.becomeAuthority(m); return; }
+    if (m.t === 'pj' && !this.server) this.ui.toast(`<b>${m.name}</b> joined`);
+    if (!this.world) return;
+    this.onServer(m);
+  }
+  onDisconnect() {
+    if (!this.inWorld() && this.state !== 'loading') return;
+    this.net = null;
+    this.quitToTitle(true);
+    this.ui.show('offline', { title: 'Connection lost', text: 'The connection to the world dropped. Your progress up to a few seconds ago is saved.' });
+  }
+
+  async playOffline() {
+    let rec = await Save.loadWorld('offline');
+    if (!rec) {
+      const seed = hashString(SHARED_SEED_TEXT);
+      rec = { id: 'offline', meta: { id: 'offline', name: 'Offline world', seed, seedText: SHARED_SEED_TEXT, gamemode: 'survival', cheats: true, created: Date.now(), played: Date.now(), time: 1000 }, edits: [], server: null, player: null };
+      await Save.saveWorld(rec);
+    }
+    return this.enterWorld(rec);
   }
 
   saveNow() {
     if (this.state === 'title' || !this.player) return;
-    if (this.isClient) {
-      Save.saveLocal(`client.${this.world.seed}.${this.profile.name}`, this.player.serialize());
+    if (this.net) {
+      const data = this.player.serialize();
+      data.gamemode = 'survival';
+      this.net.send({ t: 'save', data });
+      if (this.server) this.net.send(this.server.persistData());
       return;
     }
-    if (!this.server || !this.rec) return;
+    if (!this.server || !this.rec || !this.rec.id) return;
     const rec = this.rec;
     rec.meta.played = Date.now();
     rec.meta.time = this.server.time;
@@ -355,6 +411,7 @@ class Game {
     this.input.unlock();
     this.disposeWorld();
     this.startTitle();
+    this.refreshStatus();
     if (!silent) this.ui.show('title');
   }
 
@@ -477,15 +534,16 @@ class Game {
     this.send({ t: 'chat', text });
   }
 
-  canCheat() { return this.isHost || !!this.cheats; }
+  canCheat() { return !this.net; }
 
   runCommand(cmd) {
     const [name, ...args] = cmd.trim().split(/\s+/);
     const p = this.player;
     const say = (t) => this.ui.chat('§7' + t);
-    if (!this.canCheat() && !['help', 'seed', 'spawn'].includes(name)) { say('Commands are not allowed in this world.'); return; }
+    if (!this.canCheat() && !['help', 'seed', 'spawn', 'kill', 'list'].includes(name)) { say('That command is off in the shared world. Try /help.'); return; }
     switch (name) {
-      case 'help': say('/time set day|night|noon|midnight|<ticks> · /weather clear|rain|thunder · /gamemode survival|creative · /give <item> [n] · /tp x y z · /summon <mob> · /seed · /spawn · /kill'); break;
+      case 'list': say('Online: ' + this.playerNames().join(', ')); break;
+      case 'help': if (this.net) { say('/list · /spawn · /seed · /kill'); break; } say('/time set day|night|noon|midnight|<ticks> · /weather clear|rain|thunder · /gamemode survival|creative · /give <item> [n] · /tp x y z · /summon <mob> · /seed · /spawn · /kill'); break;
       case 'time': {
         const v = args[1] || args[0];
         const map = { day: 1000, noon: 6000, sunset: 11800, night: 13000, midnight: 18000, sunrise: 23200 };
@@ -935,8 +993,9 @@ class Game {
       if (n === 4) this.serverAcc = 0;
       this.time = this.server.time;
     } else if (this.dayCycle) this.time += dt * 20;
+    if (this.server && this.net) this.net.flush();
     this.netAcc += dt;
-    if (this.netAcc >= 0.05) {
+    if (this.netAcc >= (this.server ? 0.05 : 0.1)) {
       this.netAcc = 0;
       const flags = (p.sneaking ? 1 : 0) | (p.sprinting ? 2 : 0) | (this.swingFlag > 0 ? 4 : 0) | (this.hurtFlag > 0 ? 8 : 0) | (this.bow ? 16 : 0);
       this.send({ t: 'state', p: [+p.x.toFixed(3), +p.y.toFixed(3), +p.z.toFixed(3)], r: [+p.yaw.toFixed(3), +p.pitch.toFixed(3)], f: flags, h: p.held ? p.held.id : 0, g: p.gamemode, dead: p.dead, hp: p.health });
@@ -955,7 +1014,7 @@ class Game {
       }
     }
     this.saveAcc += dt;
-    if (this.saveAcc > 30) { this.saveAcc = 0; this.saveNow(); }
+    if (this.saveAcc > (this.net ? 15 : 30)) { this.saveAcc = 0; this.saveNow(); }
 
     // ---- world + visuals
     this.world.update(p.x, p.z);

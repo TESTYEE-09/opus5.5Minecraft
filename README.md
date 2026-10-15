@@ -1,6 +1,6 @@
 # Lumencraft
 
-A voxel sandbox that runs in the browser — survival and creative, with friends over peer-to-peer WebRTC.
+A voxel sandbox that runs in the browser. There is one persistent world and everyone who opens the page plays in it together.
 
 **Play:** https://testyee-09.github.io/opus5.5Minecraft/
 
@@ -9,7 +9,8 @@ A voxel sandbox that runs in the browser — survival and creative, with friends
 - Survival: health, hunger, drowning, fall damage, mining tiers, crafting with a recipe book, furnaces, chests, farming, beds, TNT, bows
 - Mobs: pigs, cows, sheep, chickens; zombies and skeletons that burn at dawn; spiders
 - Flowing water and lava, falling sand, leaf decay, crop growth, weather with thunderstorms
-- Multiplayer: open your world from the pause menu and share the 5-letter code or invite link
+- One shared world: no rooms or codes. A Cloudflare Durable Object (`server/`) stores every block edit, chest, furnace and player save, and relays messages; the longest-connected player's browser runs the simulation and hands it over when they leave
+- If the server can't be reached you can play an offline copy of the world
 - Character creator, generative piano soundtrack, recorded sound effects
 
 Everything visual (textures, models, terrain) is generated in code. See `public/CREDITS.md` for audio credits.
@@ -18,3 +19,5 @@ Everything visual (textures, models, terrain) is generated in code. See `public/
 npm install
 npm run dev
 ```
+
+World server: `cd server && npx wrangler@4.151.0 deploy` (wss://lumencraft-world.nomaeofficial.workers.dev/world).

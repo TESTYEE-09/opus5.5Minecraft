@@ -9,7 +9,6 @@
     "preview": "vite preview --port 5179"
   },
   "dependencies": {
-    "peerjs": "1.5.5",
     "three": "0.186.1"
   },
   "devDependencies": {
