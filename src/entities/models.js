@@ -90,6 +90,7 @@ export function defaultLook(seed = Math.random() * 1e9) {
 }
 
 export function paintPlayerSkin(look, kind = 'player') {
+  look = look || {};
   const s = new Skin(64, 64);
   s.layout('head', 0, 0, 8, 8, 8);
   s.layout('hat', 32, 0, 8, 8, 8);
@@ -102,6 +103,8 @@ export function paintPlayerSkin(look, kind = 'player') {
   let skin = look.skin, shirt = look.shirt, pants = look.pants, hair = look.hair;
   if (kind === 'zombie') { skin = '#5a9a52'; shirt = '#2f8a9a'; pants = '#3a3a8a'; hair = '#2f5a2a'; }
   if (kind === 'skeleton') { skin = '#c8c8c0'; shirt = '#b8b8b0'; pants = '#a8a8a0'; hair = '#c8c8c0'; }
+  if (kind === 'verity') { skin = '#f3e9e6'; shirt = '#f6f6f8'; pants = '#f6f6f8'; hair = '#121016'; look = { ...look, hairStyle: 1 }; }
+  if (kind === 'verity_demon') { skin = '#2e2a2e'; shirt = '#141016'; pants = '#141016'; hair = '#060508'; look = { ...look, hairStyle: 1 }; }
   // head
   s.boxFill('head', skin, 0.05, seed);
   const hd = s.boxes.head;
@@ -118,6 +121,13 @@ export function paintPlayerSkin(look, kind = 'player') {
   // eyes
   if (kind === 'skeleton') {
     s.px(F, 1, 3, '#1a1a1a', 2, 2); s.px(F, 5, 3, '#1a1a1a', 2, 2); s.px(F, 3, 5, '#2a2a2a', 2, 1); s.px(F, 2, 6, '#3a3a3a', 4, 1);
+  } else if (kind === 'verity') {
+    s.px(F, 2, 4, '#050407', 1, 2); s.px(F, 5, 4, '#050407', 1, 2);
+    s.px(F, 3, 6, '#d8b8b4', 2, 1);
+    s.px(F, 1, 6, '#f0c8c8'); s.px(F, 6, 6, '#f0c8c8');
+  } else if (kind === 'verity_demon') {
+    s.px(F, 1, 3, '#ff1a1a', 2, 2); s.px(F, 5, 3, '#ff1a1a', 2, 2); s.px(F, 2, 3, '#ffd0d0'); s.px(F, 5, 3, '#ffd0d0');
+    s.px(F, 1, 6, '#000000', 6, 1); s.px(F, 2, 7, '#000000'); s.px(F, 5, 7, '#000000'); s.px(F, 3, 6, '#ff3a3a', 2, 1);
   } else {
     s.px(F, 1, 4, '#ffffff', 2, 1); s.px(F, 5, 4, '#ffffff', 2, 1);
     s.px(F, kind === 'zombie' ? 1 : 2, 4, kind === 'zombie' ? '#1a1a1a' : look.eyes); s.px(F, kind === 'zombie' ? 6 : 5, 4, kind === 'zombie' ? '#1a1a1a' : look.eyes);
@@ -128,6 +138,11 @@ export function paintPlayerSkin(look, kind = 'player') {
   s.boxFill('body', shirt, 0.07, seed + 5);
   s.band('body', 10, 12, pants, 0.05);
   if (kind === 'player') s.px(s.boxes.body.front, 3, 0, shade(shirt, 0.75), 2, 2);
+  if (kind === 'verity' || kind === 'verity_demon') {
+    // long hair falls over the back of the dress
+    s.fill([s.boxes.body.back[0], s.boxes.body.back[1], 8, 7], hair, 0.1, seed + 9);
+    if (kind === 'verity_demon') for (let k = 0; k < 6; k++) s.px(s.boxes.body.front, k, 10 + (k % 2), '#000000');
+  }
   if (kind === 'skeleton') {
     s.boxFill('body', '#2a2a2a', 0, seed);
     for (let y = 1; y < 10; y += 2) s.px(s.boxes.body.front, 1, y, '#c8c8c0', 6, 1);
@@ -218,6 +233,14 @@ function paintQuadruped(kind) {
 }
 
 export function buildMob(kind, renderer) {
+  if (kind === 'verity' || kind === 'verity_demon') {
+    const skin = paintPlayerSkin(defaultLook(7), kind);
+    const mat = renderer.entityMaterial(skin.texture(), { emissive: kind === 'verity_demon' ? 0.12 : 0 });
+    const m = buildHumanoid(skin, mat, { scale: kind === 'verity' ? 0.55 : 1.2 });
+    m.userData.mat = mat;
+    m.userData.height = kind === 'verity' ? 1.05 : 2.3;
+    return m;
+  }
   if (kind === 'zombie' || kind === 'skeleton') {
     const skin = paintPlayerSkin(defaultLook(1), kind);
     const mat = renderer.entityMaterial(skin.texture());

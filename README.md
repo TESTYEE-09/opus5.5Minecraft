@@ -11,6 +11,8 @@ A voxel sandbox that runs in the browser. There is one persistent world and ever
 - Flowing water and lava, falling sand, leaf decay, crop growth, weather with thunderstorms
 - One shared world: no rooms or codes. A Cloudflare Durable Object (`server/`) stores every block edit, chest, furnace and player save, and relays messages; the longest-connected player's browser runs the simulation and hands it over when they leave
 - If the server can't be reached you can play an offline copy of the world
+- Guns (pistol, assault rifle, shotgun, sniper with scope), crafted from iron, planks and gunpowder; bullets from copper or iron + gunpowder
+- Verity: a fan-made helper friend (after ThatMob's videos) who follows you, fights for you and answers questions like "where is iron?" or "how do I make a furnace?" — leave her alone in the dark too long and she changes
 - Character creator, generative piano soundtrack, recorded sound effects
 
 Everything visual (textures, models, terrain) is generated in code. See `public/CREDITS.md` for audio credits.

@@ -279,7 +279,9 @@ export class UI {
     this.badge = h('div', { class: 'room-badge hidden' });
     this.tags = h('div', {});
     this.hintEl = h('div', { class: 'hint', style: { opacity: 0 } });
-    this.hud.append(this.cross, this.hotbarWrap, this.heldName, this.toastsEl, this.chatEl, this.debugEl, this.fpsEl, this.badge, this.tags, this.hintEl);
+    this.ammoEl = h('div', { class: 'ammo hidden' });
+    this.scopeEl = h('div', { class: 'scope hidden' });
+    this.hud.append(this.scopeEl, this.ammoEl, this.cross, this.hotbarWrap, this.heldName, this.toastsEl, this.chatEl, this.debugEl, this.fpsEl, this.badge, this.tags, this.hintEl);
     this.root.append(this.hud);
     this.slotEls = [];
     for (let i = 0; i < 9; i++) { const s = h('div', { class: 'slot' }); this.hotbar.append(s); this.slotEls.push(s); }
@@ -342,6 +344,19 @@ export class UI {
     this.debugEl.classList.toggle('hidden', !g.debug);
     if (g.debug) this.debugEl.textContent = g.debugInfo();
     // room badge
+    // gun ammo + scope
+    const gun = p.held && ITEMS[p.held.id].gun;
+    this.ammoEl.classList.toggle('hidden', !gun);
+    if (gun) {
+      const gs = g.gunState;
+      const inMag = gun.mag - (p.held.dmg || 0);
+      const reserve = p.creative ? '∞' : p.inventory.count(I.bullets);
+      const txt = gs && gs.reload > 0 ? 'RELOADING' : `${inMag} / ${reserve}`;
+      if (this.ammoEl.textContent !== txt) this.ammoEl.textContent = txt;
+      this.ammoEl.classList.toggle('low', inMag <= Math.ceil(gun.mag / 4));
+    }
+    this.scopeEl.classList.toggle('hidden', !g.scoped);
+    this.cross.style.opacity = g.scoped ? 0 : 1;
     this.updateNametags();
   }
 
@@ -656,7 +671,7 @@ export class UI {
   }
   category(id) {
     const it = ITEMS[id];
-    if (id >= 256) { if (it.tool || ['bow', 'arrow', 'shears', 'flint_and_steel', 'bucket', 'water_bucket', 'lava_bucket'].includes(it.name)) return 'tools'; if (it.food) return 'food'; return 'misc'; }
+    if (id >= 256) { if (it.tool || it.gun || it.name === 'bullets' || ['bow', 'arrow', 'shears', 'flint_and_steel', 'bucket', 'water_bucket', 'lava_bucket'].includes(it.name)) return 'tools'; if (it.food) return 'food'; return 'misc'; }
     const b = BLOCKS[id];
     if (b.use || b.torch || b.be || ['lantern', 'glowstone', 'tnt', 'bed', 'crystal_block', 'jack_o_lantern'].includes(b.name)) return 'misc';
     if (SHAPES[id] === SHAPE.CROSS || b.leaves || b.sapling || b.tag === 'log' || ['grass', 'dirt', 'sand', 'gravel', 'clay', 'snow', 'ice', 'packed_ice', 'podzol', 'coarse_dirt', 'moss_block', 'cactus', 'pumpkin', 'melon', 'stone', 'cloud', 'farmland'].includes(b.name) || b.name.endsWith('_ore')) return 'nature';

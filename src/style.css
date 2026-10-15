@@ -210,3 +210,11 @@ input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 16px;
 .dot.off { background: #888; box-shadow: none; }
 .players { background: rgba(0,0,0,0.25); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; max-height: 180px; overflow: auto; }
 .players .pl { display: flex; align-items: center; gap: 8px; padding: 3px 0; font-size: 16px; }
+/* the held stack and tooltips follow the pointer: they must never catch clicks */
+#ui > .cursor-stack, #ui > .tooltip, #ui > .cursor-stack * { pointer-events: none !important; }
+
+.ammo { position: absolute; right: 22px; bottom: 22px; font-size: 30px; letter-spacing: 2px; text-shadow: 0 2px 0 #000, 0 0 12px rgba(0,0,0,0.6); }
+.ammo.low { color: #ff8a6b; }
+.scope { position: absolute; inset: 0; background: radial-gradient(circle at center, transparent 0, transparent 33vmin, rgba(0,0,0,0.92) 33.5vmin, #000 60vmin); }
+.scope::before { content: ''; position: absolute; left: 50%; top: calc(50% - 33vmin); width: 1px; height: 66vmin; background: rgba(0,0,0,0.85); }
+.scope::after { content: ''; position: absolute; top: 50%; left: calc(50% - 33vmin); height: 1px; width: 66vmin; background: rgba(0,0,0,0.85); }

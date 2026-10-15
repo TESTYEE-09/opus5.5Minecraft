@@ -945,6 +945,26 @@ ICON.shears = (p) => {
   p.rect(2, 12, 4, 14, '#b8302a'); p.rect(5, 13, 6, 14, '#b8302a');
   p.outline('#1a1a1a');
 };
+function gun(p, parts) {
+  clearAll(p);
+  for (const [x0, y0, x1, y1, c] of parts) p.rect(x0, y0, x1, y1, c);
+  p.outline('#0a0a0c');
+}
+const GM = '#3a3d44', GD = '#25272c', GL = '#5a5e68', WD = '#7a5230', WL = '#9a6a3e';
+ICON.pistol = (p) => gun(p, [[3, 5, 12, 7, GM], [3, 5, 12, 5, GL], [10, 8, 12, 8, GD], [4, 8, 6, 12, GD], [4, 8, 4, 12, GM], [7, 8, 8, 9, GD], [12, 6, 13, 6, GD]]);
+ICON.assault_rifle = (p) => gun(p, [[0, 6, 3, 8, WD], [0, 6, 3, 6, WL], [4, 5, 11, 8, GM], [4, 5, 11, 5, GL], [12, 6, 15, 6, GD], [8, 9, 9, 12, GD], [9, 12, 10, 12, GD], [5, 9, 6, 10, GD], [7, 4, 9, 4, GD]]);
+ICON.shotgun = (p) => gun(p, [[0, 7, 4, 9, WD], [0, 7, 4, 7, WL], [5, 6, 9, 8, GM], [5, 6, 9, 6, GL], [10, 6, 15, 6, GD], [10, 7, 15, 7, GM], [10, 8, 13, 8, WD], [6, 9, 7, 10, GD]]);
+ICON.sniper_rifle = (p) => gun(p, [[0, 7, 4, 9, WD], [0, 7, 4, 7, WL], [5, 6, 10, 8, GM], [11, 7, 15, 7, GD], [5, 3, 9, 4, GD], [4, 3, 4, 4, '#4a90c0'], [6, 5, 7, 5, GD], [7, 9, 8, 10, GD], [8, 9, 8, 11, GD]]);
+ICON.bullets = (p) => { clearAll(p); for (const x of [3, 7, 11]) { p.rect(x, 5, x + 2, 6, '#c8c8c8'); p.rect(x, 7, x + 2, 12, '#d8a840'); p.rect(x, 7, x, 12, '#f0d070'); } p.outline('#2a1a08'); };
+ICON.verity = (p) => {
+  clearAll(p);
+  p.rect(5, 1, 10, 6, '#f0e6e0');
+  p.rect(4, 1, 4, 9, '#141218'); p.rect(11, 1, 11, 9, '#141218'); p.rect(5, 0, 10, 0, '#141218'); p.rect(5, 1, 10, 1, '#141218');
+  p.rect(6, 3, 6, 4, '#000000'); p.rect(9, 3, 9, 4, '#000000');
+  p.rect(5, 7, 10, 13, '#f4f4f6'); p.rect(4, 8, 4, 11, '#f0e6e0'); p.rect(11, 8, 11, 11, '#f0e6e0');
+  p.rect(6, 14, 6, 15, '#f0e6e0'); p.rect(9, 14, 9, 15, '#f0e6e0'); p.rect(5, 13, 10, 13, '#d8d8de');
+  p.outline('#2a2430');
+};
 for (const tier of Object.keys(TIER_PAL)) for (const kind of ['pickaxe', 'axe', 'shovel', 'sword', 'hoe'])
   ICON[tier + '_' + kind] = (p) => toolSprite(p, kind, TIER_PAL[tier]);
 

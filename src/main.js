@@ -32,7 +32,7 @@ const DEFAULT_SETTINGS = {
 const DEATH = {
   fall: 'fell from a high place', drown: 'drowned', lava: 'tried to swim in lava', fire: 'burned to death', cactus: 'was pricked to death',
   starve: 'starved to death', void: 'fell out of the world', zombie: 'was slain by a Zombie', skeleton: 'was shot by a Skeleton',
-  spider: 'was slain by a Spider', explosion: 'blew up', arrow: 'was shot', lightning: 'was struck by lightning', player: 'was slain', kill: 'died',
+  spider: 'was slain by a Spider', explosion: 'blew up', arrow: 'was shot', lightning: 'was struck by lightning', player: 'was slain', kill: 'died', verity: 'was taken by Verity',
 };
 const ARMS = { pickaxe: 1, axe: 1, shovel: 1, hoe: 1 };
 const SHARED_SEED_TEXT = 'Lumencraft';
@@ -221,7 +221,7 @@ class Game {
     this.player = new Player(this);
     this.player.gamemode = meta.gamemode;
     if (rec.player) this.player.load(rec.player);
-    else { this.player.x = meta.spawn[0] + 0.5; this.player.y = meta.spawn[1]; this.player.z = meta.spawn[2] + 0.5; this.needsGround = true; this.giveStarter(); }
+    else { this.player.x = meta.spawn[0] + 0.5; this.player.y = meta.spawn[1]; this.player.z = meta.spawn[2] + 0.5; this.needsGround = true; this.player.inventory.add(I.verity, 1); }
     const me = { id: 1, local: true, name: this.profile.name, look: this.profile.look, x: this.player.x, y: this.player.y, z: this.player.z, yaw: 0, pitch: 0, flags: 0, held: 0, gamemode: this.player.gamemode, send: (m) => this.onServer(m) };
     this.server.players.set(1, me); me.alive = true;
     this.myId = 1;
@@ -326,8 +326,16 @@ class Game {
     this.weather.set(wt.rain, wt.thunder); this.weather.rain = wt.rain;
     this.player = new Player(this);
     this.player.gamemode = 'survival';
-    if (welcome.player) { this.player.load(welcome.player); this.player.gamemode = 'survival'; }
-    else { this.player.x = spawn[0] + 0.5; this.player.y = spawn[1]; this.player.z = spawn[2] + 0.5; this.needsGround = true; }
+    if (welcome.player) {
+      this.player.load(welcome.player); this.player.gamemode = 'survival';
+      // Verity was out when you left: she comes back with you
+      if (welcome.player.verityOut && !this.player.inventory.count(I.verity)) this.player.inventory.add(I.verity, 1);
+      this.verityUnease = welcome.player.verityUnease || 0;
+    } else {
+      this.player.x = spawn[0] + 0.5; this.player.y = spawn[1]; this.player.z = spawn[2] + 0.5; this.needsGround = true;
+      this.player.inventory.add(I.verity, 1);
+      this.firstVerity = true;
+    }
     if (welcome.authority === welcome.id) this.becomeAuthority({ time: welcome.time, weather: welcome.weather, be: welcome.be, players: welcome.players, quiet: true });
     await this.waitForSpawn();
     if (this.server) this.server.meta.spawn = this.rec.meta.spawn;
@@ -339,6 +347,7 @@ class Game {
     const n = this.playerCount();
     this.ui.chat(`§7Welcome to §e${GAME_NAME}§7 — one world, shared by everyone. ${n > 1 ? `§a${n - 1} other player${n > 2 ? 's' : ''} online.` : 'You are the only one here right now.'}`);
     if (!welcome.player) this.ui.hint('<kbd>WASD</kbd> move · <kbd>Space</kbd> jump · <kbd>E</kbd> inventory · <kbd>T</kbd> chat · <kbd>Esc</kbd> menu', 9000);
+    if (this.firstVerity) setTimeout(() => this.ui.chat('§dHi. I\'m Verity. I\'ll be your friend. Right-click to put me down, then ask me anything — like "verity, where is iron?"', 'Verity'), 4000);
   }
 
   // This browser runs the simulation for everyone (mobs, water, furnaces, time).
@@ -391,6 +400,9 @@ class Game {
     if (this.net) {
       const data = this.player.serialize();
       data.gamemode = 'survival';
+      const mine = this.myVerity();
+      data.verityOut = !!mine;
+      data.verityUnease = mine ? mine.unease || 0 : this.verityUnease || 0;
       this.net.send({ t: 'save', data });
       if (this.server) this.net.send(this.server.persistData());
       return;
@@ -508,6 +520,16 @@ class Game {
       case 'arrowhit': A.play('dig.wood', { vol: 0.35, pos: pos(m.x, m.y, m.z), rate: 1.5 }); break;
       case 'bow': A.play('woosh', { vol: 0.5, pos: pos(m.x, m.y, m.z), rate: 1.3 }); break;
       case 'shear': A.play('chop', { vol: 0.6 }); break;
+      case 'shot': {
+        const [ax, ay, az] = m.a, [bx, by, bz] = m.b;
+        const d = this.renderer.camera.position.distanceTo(new THREE.Vector3(ax, ay, az));
+        A.play(d > 40 ? m.snd + '.far' : m.snd, { vol: d > 40 ? 0.7 : 0.9, pos: [ax, ay, az], range: 160 });
+        this.tracer(ax, ay, az, bx, by, bz);
+        P.spawn({ x: ax, y: ay, z: az, life: 0.06, size: 0.5, color: [14, 9, 4], glow: true });
+        break;
+      }
+      case 'demon': A.play('boom', { vol: 1, rate: 0.5, reverb: 0.8 }); A.play('explode', { vol: 0.5, rate: 0.35 }); this.shake = 1; this.damageFlash = 0.6; P.poof(m.x, m.y + 1, m.z); break;
+      case 'poof': P.poof(m.x, m.y, m.z); A.play('pop', { vol: 0.5, rate: 0.6 }); break;
       default: break;
     }
   }
@@ -662,6 +684,13 @@ class Game {
     if (this.useCd > 0) this.useCd -= dt;
     const held = p.held;
     const it = held ? ITEMS[held.id] : null;
+    if (it && it.gun) {
+      this.mine = null; this.crack.visible = false;
+      this.gunUpdate(dt);
+      if (inp.mouse.rightDown && hit && BLOCKS[hit.id].use && !p.sneaking) this.use(hit, null, true);
+      return;
+    }
+    if (this.gunState) this.gunState.aim = 0;
 
     // ---- left: attack / mine
     if (inp.mouse.left && !this.eat && !this.bow) {
@@ -815,6 +844,15 @@ class Game {
       if (def.use === 'tnt' && it && (it.name === 'flint_and_steel' || held.id === B.torch)) { this.send({ t: 'ignite', x: hit.x, y: hit.y, z: hit.z }); this.swing(); if (it.durability) this.wearTool(1); return; }
     }
     if (!held) return;
+    // Verity: place her where you point, or throw her
+    if (it.verity && press) {
+      const e = this.eyePos(), d = this.lookDir();
+      if (hit && hit.dist < 4) { const [x, y, z] = this.placeAt(hit); this.send({ t: 'verity', p: [x + 0.5, y + 0.1, z + 0.5], unease: this.verityUnease || 0 }); }
+      else this.send({ t: 'verity', p: [e.x + d.x * 0.8, e.y + d.y * 0.8 - 0.3, e.z + d.z * 0.8], v: [d.x * 11, d.y * 11 + 2, d.z * 11], unease: this.verityUnease || 0 });
+      p.inventory.decSlot(p.selected); this.swing(); this.ui.hudDirty();
+      this.audio.play('woosh', { vol: 0.5, rate: 1.4 });
+      return;
+    }
     // food
     if (it.food && (p.hunger < 20 || it.heal || p.creative) && press) { this.eat = { id: held.id, t: 0 }; return; }
     // bow
@@ -896,6 +934,116 @@ class Game {
   setBlockLocal(x, y, z, id, expect) {
     if (!this.server) this.world.setBlock(x, y, z, id, { immediate: true });
     this.send({ t: 'set', x, y, z, id, expect });
+  }
+
+  // ---------------------------------------------------------------- Verity helpers
+  myVerity() {
+    for (const v of this.entities.ents.values()) if (v.owner === this.myId && (v.mobKind === 'verity' || v.mobKind === 'verity_demon')) {
+      if (this.server) { const e = this.server.entities.get(v.id); if (e) v.unease = e.unease; }
+      return v;
+    }
+    return null;
+  }
+
+  // ---------------------------------------------------------------- guns
+  gunUpdate(dt) {
+    const p = this.player, inp = this.input, st = p.held, it = ITEMS[st.id], G = it.gun;
+    const g = this.gunState || (this.gunState = { cd: 0, reload: 0, aim: 0, heldId: -1, slot: -1 });
+    if (g.heldId !== st.id || g.slot !== p.selected) { g.heldId = st.id; g.slot = p.selected; g.reload = 0; g.cd = 0.3; }
+    g.cd -= dt;
+    const aiming = inp.mouse.right && g.reload <= 0;
+    g.aim += ((aiming ? 1 : 0) - g.aim) * Math.min(1, dt * 12);
+    g.def = G;
+    if (g.reload > 0) {
+      g.reload -= dt;
+      if (g.reload <= 0) this.finishReload(st, G);
+      return;
+    }
+    const inMag = G.mag - (st.dmg || 0);
+    if (inp.hit('reload') && inMag < G.mag) { this.startReload(G); return; }
+    const want = G.auto ? inp.mouse.left : inp.mouse.leftDown;
+    if (!want || g.cd > 0) return;
+    if (inMag <= 0) {
+      this.audio.play('gun.dry', { vol: 0.6 });
+      g.cd = 0.35;
+      if (p.creative || p.inventory.count(I.bullets) > 0) this.startReload(G); else this.ui.hint('Out of bullets — craft some from copper or iron + gunpowder', 2500);
+      return;
+    }
+    this.fireGun(G, g);
+    st.dmg = (st.dmg || 0) + 1;
+    g.cd = G.cd;
+    this.ui.hudDirty();
+  }
+  startReload(G) {
+    const p = this.player, g = this.gunState;
+    if (!p.creative && p.inventory.count(I.bullets) <= 0) { this.ui.hint('No bullets', 1500); return; }
+    g.reload = G.reload;
+    this.audio.play(G.reloadSnd === 'pistol' ? 'gun.out.pistol' : G.reloadSnd === 'pump' ? 'gun.pump' : 'gun.out.rifle', { vol: 0.6 });
+  }
+  finishReload(st, G) {
+    const p = this.player;
+    const need = st.dmg || 0;
+    const got = p.creative ? need : Math.min(need, p.inventory.count(I.bullets));
+    if (!p.creative && got) p.inventory.take(I.bullets, got);
+    st.dmg = need - got;
+    this.audio.play(G.reloadSnd === 'pistol' ? 'gun.in.pistol' : G.reloadSnd === 'bolt' ? 'gun.bolt' : G.reloadSnd === 'pump' ? 'gun.pump' : 'gun.in.rifle', { vol: 0.6 });
+    p.inventory.changed(); this.ui.hudDirty();
+  }
+  fireGun(G, g) {
+    const p = this.player, w = this.world;
+    const eye = this.eyePos(), base = this.lookDir();
+    const scoped = G.scope && g.aim > 0.8;
+    const spread = scoped ? G.scopedSpread : G.spread * (g.aim > 0.5 ? 0.55 : 1) * (p.onGround ? 1 : 1.8) * (p.sprinting ? 1.5 : 1);
+    const right = new THREE.Vector3(Math.cos(p.yaw), 0, -Math.sin(p.yaw));
+    const muzzle = eye.clone().addScaledVector(base, 0.7).addScaledVector(right, scoped ? 0 : 0.16 * (1 - g.aim)).add(new THREE.Vector3(0, -0.12 * (1 - g.aim), 0));
+    const pvp = !!(this.rec && this.rec.meta.pvp);
+    const dmgBy = new Map();
+    let endPoint = null;
+    for (let k = 0; k < G.pellets; k++) {
+      const d = base.clone();
+      d.x += (Math.random() - 0.5) * 2 * spread; d.y += (Math.random() - 0.5) * 2 * spread; d.z += (Math.random() - 0.5) * 2 * spread;
+      d.normalize();
+      const bh = w.raycast(eye, d, G.range);
+      const eh = this.entities.raycast(eye, d, G.range, pvp);
+      let dist = G.range;
+      if (eh && (!bh || eh.dist < bh.dist)) {
+        dist = eh.dist;
+        dmgBy.set(eh.v, (dmgBy.get(eh.v) || 0) + G.dmg);
+        this.particles.spawn({ x: eye.x + d.x * dist, y: eye.y + d.y * dist, z: eye.z + d.z * dist, vx: -d.x * 2 + (Math.random() - 0.5) * 2, vy: 1.5, vz: -d.z * 2 + (Math.random() - 0.5) * 2, life: 0.4, size: 0.08, color: [0.6, 0.02, 0.02], gravity: 14, light: true });
+      } else if (bh) {
+        dist = bh.dist;
+        this.particles.blockHit(bh.x, bh.y, bh.z, bh.id, bh.nx, bh.ny, bh.nz);
+        this.particles.spawn({ x: eye.x + d.x * dist, y: eye.y + d.y * dist, z: eye.z + d.z * dist, life: 0.05, size: 0.18, color: [6, 4, 2], glow: true });
+        if (k === 0) this.audio.play('dig.stone', { vol: 0.25, rate: 1.6, pos: [bh.x + 0.5, bh.y + 0.5, bh.z + 0.5] });
+      }
+      const end = eye.clone().addScaledVector(d, dist);
+      if (k === 0) endPoint = end;
+      this.tracer(muzzle.x, muzzle.y, muzzle.z, end.x, end.y, end.z);
+    }
+    for (const [v, dmg] of dmgBy) {
+      if (v.type === 'player') this.send({ t: 'hitp', e: v.id, d: Math.round(dmg), kx: base.x * 0.3, kz: base.z * 0.3 });
+      else this.send({ t: 'hit', e: v.id, d: Math.round(dmg), kx: base.x, kz: base.z, gun: true });
+      this.audio.play('punch', { vol: 0.35, rate: 1.4 });
+    }
+    this.particles.spawn({ x: muzzle.x, y: muzzle.y, z: muzzle.z, life: 0.05, size: 0.45, color: [16, 10, 4], glow: true });
+    this.particles.spawn({ x: muzzle.x, y: muzzle.y, z: muzzle.z, vy: 0.5, life: 0.5, size: 0.15, color: [0.5, 0.5, 0.5], alpha: 0.4, grow: 3, light: true });
+    p.pitch = Math.min(1.55, p.pitch + G.recoil * (g.aim > 0.5 ? 0.6 : 1));
+    p.yaw += (Math.random() - 0.5) * G.recoil * 0.5;
+    this.hand.kick = 1;
+    this.shake = Math.max(this.shake, G.recoil * 3);
+    this.audio.play(G.snd, { vol: 0.85 });
+    if (Math.random() < 0.7) this.audio.play('gun.casing', { vol: 0.25, delay: 0.35 + Math.random() * 0.2 });
+    this.send({ t: 'gunfx', snd: G.snd, a: [+muzzle.x.toFixed(2), +muzzle.y.toFixed(2), +muzzle.z.toFixed(2)], b: [+endPoint.x.toFixed(2), +endPoint.y.toFixed(2), +endPoint.z.toFixed(2)] });
+    this.swingFlag = 0.1;
+  }
+  tracer(ax, ay, az, bx, by, bz) {
+    const dx = bx - ax, dy = by - ay, dz = bz - az;
+    const len = Math.hypot(dx, dy, dz);
+    const n = Math.min(40, Math.floor(len / 1.2));
+    for (let i = 1; i <= n; i++) {
+      const t = i / (n + 1);
+      this.particles.spawn({ x: ax + dx * t, y: ay + dy * t, z: az + dz * t, life: 0.04 + t * 0.05, size: 0.045, color: [7, 5.5, 3], glow: true });
+    }
   }
 
   shootArrow(power) {
@@ -1024,7 +1172,10 @@ class Game {
     this.updateCamera(dt);
     const L = this.world.getLight(Math.floor(p.x), Math.floor(p.y + p.eyeH), Math.floor(p.z));
     const sky = (L >> 4) / 15, blk = (L & 15) / 15;
-    this.hand.update(dt, p, [sky, blk], this.thirdPerson === 0 && this.hudVisible && !p.dead);
+    const gunHeld = p.held && ITEMS[p.held.id].gun;
+    const aim = gunHeld && this.gunState ? this.gunState.aim : 0;
+    this.scoped = !!(gunHeld && gunHeld.scope && aim > 0.8);
+    this.hand.update(dt, p, [sky, blk], this.thirdPerson === 0 && this.hudVisible && !p.dead && !this.scoped, aim);
     if (this.hand.swing === 0.0001) { /* swing started */ }
     // environment
     const t = (this.time % DAY_TICKS) / DAY_TICKS;
@@ -1041,6 +1192,13 @@ class Game {
       underwater: p.eyeInWater === 1, eyeLight: 1 - eyeLight * 0.6,
     });
     this.shootingStars(dt);
+    // a heartbeat when something dark is close
+    this.beatT = (this.beatT || 0) - dt;
+    if (this.beatT <= 0) {
+      let near = 99;
+      for (const v of this.entities.ents.values()) if (v.mobKind === 'verity_demon' && v.buf.length) { const sv = v.buf[v.buf.length - 1]; near = Math.min(near, Math.hypot(sv.x - p.x, sv.z - p.z)); }
+      if (near < 28) { this.audio.play('heartbeat', { vol: 0.8 - near / 40 }); this.beatT = 0.45 + near / 40; } else this.beatT = 0.5;
+    }
     // audio
     const cam = this.renderer.camera;
     const fwd = this.lookDir();
@@ -1061,7 +1219,10 @@ class Game {
   updateCamera(dt) {
     const p = this.player, cam = this.renderer.camera;
     this.shake = Math.max(0, this.shake - dt * 1.8);
-    const fov = this.settings.fov + p.fovKick * 8 - (this.bow ? Math.min(1, this.bow.t / 0.9) * 10 : 0);
+    let fov = this.settings.fov + p.fovKick * 8 - (this.bow ? Math.min(1, this.bow.t / 0.9) * 10 : 0);
+    const g = this.gunState;
+    const gunHeld = p.held && ITEMS[p.held.id].gun;
+    if (g && g.aim > 0.01 && g.def && gunHeld) fov = fov * (1 - (1 - g.def.zoom) * g.aim);
     if (Math.abs(cam.fov - fov) > 0.01) { cam.fov += (fov - cam.fov) * Math.min(1, dt * 12); cam.updateProjectionMatrix(); }
     const eye = new THREE.Vector3(p.x, p.y + p.eyeH, p.z);
     let bobX = 0, bobY = 0, roll = 0;

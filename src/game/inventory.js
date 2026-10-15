@@ -57,7 +57,7 @@ export class Inventory {
 
 // ------------------------------------------------------------------ recipes
 // key values: item name, '#planks', '#log', '#wool', or array of names.
-const RECIPES = [];
+export const RECIPES = [];
 function shaped(result, count, pattern, key) { RECIPES.push({ type: 'shaped', result: I[result], count, pattern, key }); }
 function shapeless(result, count, ingredients) { RECIPES.push({ type: 'shapeless', result: I[result], count, ingredients }); }
 
@@ -117,6 +117,16 @@ const DYES = {
 };
 for (const [src, color] of Object.entries(DYES)) if (color !== 'white') shapeless(color + '_wool', 1, ['white_wool', src]);
 shapeless('gray_wool', 2, ['white_wool', 'black_wool']);
+// guns
+shapeless('gunpowder', 2, ['coal', 'flint']);
+shapeless('bullets', 12, ['copper_ingot', 'gunpowder']);
+shapeless('bullets', 8, ['iron_ingot', 'gunpowder']);
+shaped('pistol', 1, ['III', '  W'], { I: 'iron_ingot', W: '#planks' });
+shaped('assault_rifle', 1, ['III', 'GIW', '  W'], { I: 'iron_ingot', G: 'gunpowder', W: '#planks' });
+shaped('shotgun', 1, ['II ', 'IGW'], { I: 'iron_ingot', G: 'gunpowder', W: '#planks' });
+shaped('sniper_rifle', 1, ['DII', 'IGW', '  W'], { D: 'diamond', I: 'iron_ingot', G: 'gunpowder', W: '#planks' });
+// Verity can be remade if lost
+shapeless('verity', 1, ['white_wool', 'black_wool', 'string', 'string']);
 
 function matches(spec, id) {
   if (id == null) return false;

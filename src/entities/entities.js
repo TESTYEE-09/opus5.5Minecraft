@@ -7,7 +7,7 @@ import { LAYER } from '../gfx/renderer.js';
 import { rayBox } from '../world/world.js';
 
 const TYPES = ['mob', 'item', 'arrow', 'tnt', 'falling'];
-const MOB_SIZE = { pig: [0.45, 0.9], cow: [0.45, 1.4], sheep: [0.45, 1.3], chicken: [0.2, 0.7], zombie: [0.3, 1.9], skeleton: [0.3, 1.95], spider: [0.7, 0.9] };
+const MOB_SIZE = { pig: [0.45, 0.9], cow: [0.45, 1.4], sheep: [0.45, 1.3], chicken: [0.2, 0.7], zombie: [0.3, 1.9], skeleton: [0.3, 1.95], spider: [0.7, 0.9], verity: [0.3, 1.05], verity_demon: [0.45, 2.3] };
 
 export class EntityViews {
   constructor(game) {
@@ -39,7 +39,9 @@ export class EntityViews {
       const id = s[0];
       seen.add(id);
       let v = this.ents.get(id);
+      if (v && v.kind !== s[2]) { this.removeView(id); v = null; }   // Verity changing form
       if (!v) { v = this.createView(s); if (!v) continue; this.ents.set(id, v); }
+      v.owner = s[14] || 0;
       v.buf.push({ t: now, x: s[3], y: s[4], z: s[5], yaw: s[6], pitch: s[7], walk: s[8], extra: s[9], flap: s[13] });
       if (v.buf.length > 8) v.buf.shift();
       v.extra = s[9];
@@ -184,8 +186,10 @@ export class EntityViews {
         v.phase += dt * 9 * s.walk;
         const hurt = (s.extra & 1) ? 1 : 0;
         v.hurt += (hurt - v.hurt) * Math.min(1, dt * 20);
-        animateModel(o, { walk: s.walk, phase: v.phase, headYaw: 0, headPitch: s.pitch, swing: 0, t: v.age, zombie: v.mobKind === 'zombie', aim: v.mobKind === 'skeleton' && (s.extra & 8), flap: s.flap }, dt);
-        setModelLight(o, sky, Math.max(blk, (s.extra & 2) ? 0.9 : 0), v.hurt * 0.8);
+        animateModel(o, { walk: s.walk, phase: v.phase, headYaw: 0, headPitch: s.pitch, swing: 0, t: v.age, zombie: v.mobKind === 'zombie' || v.mobKind === 'verity_demon', aim: v.mobKind === 'skeleton' && (s.extra & 8), flap: s.flap }, dt);
+        const eerie = v.mobKind === 'verity_demon' ? 0.35 : (s.extra & 16) ? 0.3 + 0.15 * Math.sin(v.age * 9) : 0;
+        setModelLight(o, sky, Math.max(blk, (s.extra & 2) ? 0.9 : 0), Math.max(v.hurt * 0.8, eerie));
+        if (v.mobKind === 'verity_demon' && Math.random() < dt * 12) this.game.particles.spawn({ x: s.x + (Math.random() - 0.5) * 0.8, y: s.y + Math.random() * 2.2, z: s.z + (Math.random() - 0.5) * 0.8, vy: 0.6, life: 0.9, size: 0.18, color: [0.05, 0.02, 0.03], alpha: 0.7, grow: 1.5 });
         if ((s.extra & 2) && Math.random() < dt * 20) this.game.particles.spawn({ x: s.x + (Math.random() - 0.5) * 0.6, y: s.y + Math.random() * v.h, z: s.z + (Math.random() - 0.5) * 0.6, vy: 1.2, life: 0.4, size: 0.14, color: [6, 2.2, 0.4], glow: true, shrink: true });
       } else if (v.type === 'item') {
         v.spin += dt * 1.8;

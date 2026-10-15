@@ -8,6 +8,7 @@ import { stepBody, moveBody } from '../game/physics.js';
 import { growTree, BIOMES, BI } from '../world/worldgen.js';
 import { SMELT, fuelTicks } from '../game/inventory.js';
 import { mulberry32 } from '../core/noise.js';
+import { verityReply, verityIdle } from './verity.js';
 
 const MOBS = {
   pig: { hp: 10, hw: 0.45, h: 0.9, speed: 1.7, passive: true, drops: [['raw_porkchop', 1, 3]] },
@@ -17,6 +18,8 @@ const MOBS = {
   zombie: { hp: 20, hw: 0.3, h: 1.9, speed: 2.4, hostile: true, dmg: 3, burns: true, drops: [['rotten_flesh', 0, 2]], rare: [['iron_ingot', 0.03], ['carrot', 0]] },
   skeleton: { hp: 20, hw: 0.3, h: 1.95, speed: 2.3, hostile: true, ranged: true, burns: true, drops: [['bone', 0, 2], ['arrow', 0, 2]], rare: [['bow', 0.04]] },
   spider: { hp: 16, hw: 0.7, h: 0.9, speed: 3.2, hostile: true, dmg: 2, drops: [['string', 0, 2]], neutralDay: true },
+  verity: { hp: 30, hw: 0.25, h: 1.05, speed: 6, companion: true, drops: [] },
+  verity_demon: { hp: 60, hw: 0.4, h: 2.3, speed: 5.4, demon: true, dmg: 5, drops: [] },
 };
 export const MOB_KINDS = Object.keys(MOBS);
 const ETYPE = { mob: 0, item: 1, arrow: 2, tnt: 3, falling: 4 };
@@ -52,6 +55,7 @@ export class Server {
     this.lightningCd = 200;
     this.spawnCd = 20;
     this.onEvent = null;           // (event) local hook
+    this.later = [];               // [tick, fn] delayed actions
     world.listeners.push((x, y, z, old, id, opts) => this.onBlockChanged(x, y, z, old, id, opts));
   }
 
@@ -67,6 +71,7 @@ export class Server {
     if (!p) return;
     this.players.delete(id);
     for (const s of this.viewers.values()) s.delete(id);
+    for (const e of this.entities.values()) if (e.owner === id && (e.kind === 'verity' || e.kind === 'verity_demon')) this.entities.delete(e.id);
     this.broadcast({ t: 'pq', id });
     this.chat(`§e${p.name} left the game`);
   }
@@ -111,7 +116,9 @@ export class Server {
         p.gamemode = m.g; p.alive = !m.dead; p.hp = m.hp;
         break;
       case 'set': this.playerSetBlock(p, m); break;
-      case 'hit': this.hitEntity(p, m.e, m.d, m.kx, m.kz); break;
+      case 'hit': this.hitEntity(p, m.e, m.d, m.kx, m.kz, m.gun); break;
+      case 'gunfx': this.fx({ k: 'shot', snd: m.snd, a: m.a, b: m.b }, pid); break;
+      case 'verity': this.placeVerity(p, m); break;
       case 'hitp': this.hitPlayer(p, m.e, m.d, m.kx, m.kz); break;
       case 'use': this.useEntity(p, m.e, m.item); break;
       case 'drop': this.spawnItem(m.item, m.p[0], m.p[1], m.p[2], m.v[0], m.v[1], m.v[2], 1.5); break;
@@ -147,6 +154,7 @@ export class Server {
       case 'chat': {
         const text = String(m.text).slice(0, 200);
         this.chat(text, p.name);
+        this.verityHears(p, text);
         break;
       }
       case 'sleep': p.sleeping = !!m.on; this.checkSleep(); break;
@@ -300,7 +308,7 @@ export class Server {
         level = want;
       }
     }
-    // spread
+    // spread: straight down first
     const belowId = w.getBlock(x, y - 1, z);
     const canDown = y > 0 && (belowId === 0 || (REPLACEABLE[belowId] && !LIQUID[belowId]) || (LIQUID[belowId] === l && liqLevel(belowId) !== 0 && liqLevel(belowId) !== 8));
     if (canDown) {
@@ -311,20 +319,52 @@ export class Server {
       this.setBlock(x, y - 1, z, liqLevel(belowId) === 0 ? B.obsidian : B.cobblestone);
       return;
     }
-    if (LIQUID[belowId] === l && !canDown && level !== 0 && level !== 8) return;
+    // resting on the same liquid (a lake, a waterfall's pool): don't spread across its surface
+    if (LIQUID[belowId] === l) return;
+    if (!SOLID[belowId] && !LIQUID[belowId]) return;
     const next = (level === 0 || level === 8) ? 1 : level + 1;
     if (next > max) return;
-    if (!SOLID[belowId] && !LIQUID[belowId] && level !== 0 && level !== 8) return;
-    for (const [dx, dz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
-      const n = w.getBlock(x + dx, y, z + dz);
+    // Minecraft-style: only flow toward the nearest drop within 4 blocks; if there is none, spread evenly
+    const DIRS = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+    const passable = (bx, by, bz) => {
+      const b = w.getBlock(bx, by, bz);
+      return b === 0 || (REPLACEABLE[b] && !LIQUID[b]) || (LIQUID[b] === l && liqLevel(b) !== 0);
+    };
+    const dropAt = (bx, by, bz) => {
+      const b = w.getBlock(bx, by - 1, bz);
+      return b === 0 || (REPLACEABLE[b] && !LIQUID[b]) || (LIQUID[b] === l && liqLevel(b) !== 0 && liqLevel(b) !== 8);
+    };
+    const slope = (bx, bz, from, depth) => {
+      if (depth > 4) return 1000;
+      let best = 1000;
+      for (let d = 0; d < 4; d++) {
+        if (d === (from ^ 1)) continue;
+        const qx = bx + DIRS[d][0], qz = bz + DIRS[d][1];
+        if (!passable(qx, y, qz)) continue;
+        if (dropAt(qx, y, qz)) return depth;
+        best = Math.min(best, slope(qx, qz, d, depth + 1));
+      }
+      return best;
+    };
+    const dist = [1000, 1000, 1000, 1000];
+    let best = 1000;
+    for (let d = 0; d < 4; d++) {
+      const nx = x + DIRS[d][0], nz = z + DIRS[d][1];
+      if (!passable(nx, y, nz)) continue;
+      dist[d] = dropAt(nx, y, nz) ? 0 : slope(nx, nz, d, 1);
+      best = Math.min(best, dist[d]);
+    }
+    for (let d = 0; d < 4; d++) {
+      const nx = x + DIRS[d][0], nz = z + DIRS[d][1];
+      const n = w.getBlock(nx, y, nz);
+      if (LIQUID[n] && LIQUID[n] !== l) { this.schedule(nx, y, nz, 2); continue; }
+      if (dist[d] !== best || (best === 1000 && !passable(nx, y, nz))) continue;
       if (n === 0 || (REPLACEABLE[n] && !LIQUID[n])) {
-        if (n) this.breakForLiquid(x + dx, y, z + dz, n);
-        this.setBlock(x + dx, y, z + dz, ids[next]);
+        if (n) this.breakForLiquid(nx, y, nz, n);
+        this.setBlock(nx, y, nz, ids[next]);
       } else if (LIQUID[n] === l) {
         const nl = liqLevel(n);
-        if (nl > next && nl !== 8) this.setBlock(x + dx, y, z + dz, ids[next]);
-      } else if (LIQUID[n] && LIQUID[n] !== l) {
-        this.schedule(x + dx, y, z + dz, 2);
+        if (nl > next && nl !== 8) this.setBlock(nx, y, nz, ids[next]);
       }
     }
   }
@@ -523,13 +563,14 @@ export class Server {
     this.fx({ k: 'fuse', x, y, z });
   }
 
-  hitEntity(p, eid, dmg, kx, kz) {
+  hitEntity(p, eid, dmg, kx, kz, gun) {
     const e = this.entities.get(eid);
     if (!e) return;
     if (e.type === 'tnt' || e.type === 'arrow') return;
     if (e.type === 'item') return;
-    if (e.hurt > 0.35) return;
-    this.damageMob(e, dmg, kx, kz, p);
+    if (!gun && e.hurt > 0.35) return;
+    if (e.kind === 'verity' && e.owner === p.id) { e.unease += 15; this.veritySay(e, p, ['Why did you hit me?', 'Ow. I will remember that.', "Don't do that again."][Math.floor(this.rnd() * 3)]); }
+    this.damageMob(e, Math.min(40, dmg), kx, kz, p, gun ? 0.15 : 1);
   }
   hitPlayer(p, targetId, dmg, kx, kz) {
     if (!this.meta.pvp) return;
@@ -537,12 +578,23 @@ export class Server {
     if (!t) return;
     this.send(targetId, { t: 'hurt', amt: dmg, kb: [kx * 6, 4.5, kz * 6], cause: 'player', by: p.name });
   }
-  damageMob(e, dmg, kx = 0, kz = 0, attacker = null) {
+  damageMob(e, dmg, kx = 0, kz = 0, attacker = null, kbs = 1) {
     e.health -= dmg;
     e.hurt = 0.5;
     const l = Math.hypot(kx, kz) || 1;
-    e.vx += (kx / l) * 7; e.vz += (kz / l) * 7; e.vy = Math.max(e.vy, 5);
+    e.vx += (kx / l) * 7 * kbs; e.vz += (kz / l) * 7 * kbs; e.vy = Math.max(e.vy, 5 * kbs);
     const d = MOBS[e.kind];
+    if (d.companion || d.demon) {
+      this.fx({ k: 'mobhurt', e: e.id, kind: e.kind });
+      if (e.health > 0) return;
+      const owner = this.players.get(e.owner);
+      if (d.demon) { this.verityCalm(e, true); return; }
+      // Verity faints back into her owner's pocket
+      this.entities.delete(e.id);
+      this.fx({ k: 'mobdie', e: e.id, kind: e.kind, x: e.x, y: e.y, z: e.z });
+      if (owner) { this.send(owner.id, { t: 'give', item: { id: I.verity, count: 1, dmg: 0 }, from: e.id }); this.send(owner.id, { t: 'chat', text: '§dVerity is hurt. She crawled back into your pocket.' }); }
+      return;
+    }
     if (d.passive) { e.panic = 4; e.ai = 'panic'; }
     else if (attacker) e.target = attacker.id;
     this.fx({ k: 'mobhurt', e: e.id, kind: e.kind });
@@ -559,6 +611,13 @@ export class Server {
   useEntity(p, eid, item) {
     const e = this.entities.get(eid);
     if (!e || e.type !== 'mob') return;
+    if (e.kind === 'verity') {
+      if (e.owner !== p.id) { this.send(p.id, { t: 'chat', text: `§dVerity: I'm not yours.` }); return; }
+      this.entities.delete(eid);
+      this.send(p.id, { t: 'give', item: { id: I.verity, count: 1, dmg: 0 }, from: eid });
+      this.fx({ k: 'pickup', e: eid, to: p.id });
+      return;
+    }
     if (e.kind === 'sheep' && item === I.shears && e.sheared <= 0) {
       e.sheared = 120;
       this.spawnItem({ id: I.white_wool, count: 1 + Math.floor(this.rnd() * 3), dmg: 0 }, e.x, e.y + 1, e.z);
@@ -630,6 +689,7 @@ export class Server {
   }
 
   updateMob(e, dt) {
+    if (e.kind === 'verity' || e.kind === 'verity_demon') { this.updateVerity(e, dt); return; }
     const d = MOBS[e.kind];
     const w = this.world;
     e.age += dt;
@@ -875,6 +935,7 @@ export class Server {
     for (const e of this.entities.values()) {
       if (e.type !== 'mob') continue;
       const d = this.nearestPlayerDist(e.x, e.y, e.z);
+      if (MOBS[e.kind].companion || MOBS[e.kind].demon) continue;
       if (d > 110) this.entities.delete(e.id);
       else if (MOBS[e.kind].hostile && d > 40 && this.rnd() < 0.01) this.entities.delete(e.id);
     }
@@ -960,6 +1021,11 @@ export class Server {
     this.tick++;
     if (this.dayCycle) this.time++;
     const t = this.tick;
+    if (this.later.length) {
+      const due = this.later.filter(l => l[0] <= t);
+      this.later = this.later.filter(l => l[0] > t);
+      for (const l of due) l[1]();
+    }
     // scheduled block updates
     if (this.scheduled.size) {
       const due = [];
@@ -1015,14 +1081,139 @@ export class Server {
       if (Math.abs(e.x - p.x) > 110 || Math.abs(e.z - p.z) > 110) continue;
       const r3 = (v) => Math.round(v * 1000) / 1000;
       let extra = 0, kind = 0;
-      if (e.type === 'mob') { kind = MOB_KINDS.indexOf(e.kind); extra = (e.hurt > 0 ? 1 : 0) | (e.burn > 0 ? 2 : 0) | (e.sheared > 0 ? 4 : 0) | (e.target ? 8 : 0); }
+      if (e.type === 'mob') { kind = MOB_KINDS.indexOf(e.kind); extra = (e.hurt > 0 ? 1 : 0) | (e.burn > 0 ? 2 : 0) | (e.sheared > 0 ? 4 : 0) | (e.target ? 8 : 0) | (e.stare > 0 ? 16 : 0); }
       else if (e.type === 'item') { kind = e.item.id; extra = e.item.count; }
       else if (e.type === 'falling') kind = e.block;
       else if (e.type === 'tnt') extra = Math.round(e.fuse * 10);
       else if (e.type === 'arrow') extra = e.stuck ? 1 : 0;
-      out.push([e.id, ETYPE[e.type], kind, r3(e.x), r3(e.y), r3(e.z), r3(e.yaw !== undefined ? e.yaw : Math.atan2(-(e.vx || 0), -(e.vz || 0))), r3(e.pitch || 0), r3(e.walk || 0), extra, r3(e.vx || 0), r3(e.vy || 0), r3(e.vz || 0), r3(e.flap || 0)]);
+      out.push([e.id, ETYPE[e.type], kind, r3(e.x), r3(e.y), r3(e.z), r3(e.yaw !== undefined ? e.yaw : Math.atan2(-(e.vx || 0), -(e.vz || 0))), r3(e.pitch || 0), r3(e.walk || 0), extra, r3(e.vx || 0), r3(e.vy || 0), r3(e.vz || 0), r3(e.flap || 0), e.owner || 0]);
     }
     return out;
+  }
+
+  // ------------------------------------------------------------------ Verity
+  placeVerity(p, m) {
+    for (const e of this.entities.values()) if (e.owner === p.id && (e.kind === 'verity' || e.kind === 'verity_demon')) this.entities.delete(e.id);
+    const e = this.spawnMob('verity', m.p[0], m.p[1], m.p[2]);
+    e.owner = p.id; e.unease = m.unease || 0; e.mode = 'follow'; e.talkT = 20 + this.rnd() * 40; e.stare = 0;
+    if (m.v) { e.vx = m.v[0]; e.vy = m.v[1]; e.vz = m.v[2]; e.thrownT = 1.4; }
+    this.later.push([this.tick + 20, () => this.veritySay(e, p, m.v ? ['Wheee!', 'Again! Again!', e.unease > 45 ? "Don't throw me." : 'Ha! That was fun.'][Math.floor(this.rnd() * 3)] : (e.unease > 45 ? "You're back." : ['Hi again!', "I'm here!", 'Where are we going?'][Math.floor(this.rnd() * 3)]))]);
+  }
+  veritySay(e, p, text, all = false) {
+    if (!text || !this.entities.has(e.id)) return;
+    const msg = { t: 'chat', text: (e.kind === 'verity_demon' ? '§4' : '§d') + text, from: e.kind === 'verity_demon' ? 'V̶e̶r̶i̶t̶y̶' : 'Verity' };
+    if (all) this.broadcast(msg); else this.send(p.id, msg);
+  }
+  verityHears(p, text) {
+    let e = null;
+    for (const o of this.entities.values()) if (o.owner === p.id && (o.kind === 'verity' || o.kind === 'verity_demon')) e = o;
+    if (!e) return;
+    const named = /^(hey |ok |hi |@)?verity\b/i.test(text.trim());
+    const near = Math.hypot(e.x - p.x, e.z - p.z) < 24;
+    if (!named && !(near && /\?\s*$/.test(text))) return;
+    const reply = verityReply(this, e, p, text);
+    if (reply) this.later.push([this.tick + 12 + Math.floor(this.rnd() * 20), () => this.veritySay(e, p, reply, true)]);
+  }
+  verityTurn(e, owner) {
+    e.kind = 'verity_demon'; e.health = MOBS.verity_demon.hp; e.hw = 0.4; e.h = 2.3; e.stare = 0;
+    this.veritySay(e, owner, 'You should not have left me alone in the dark.', true);
+    this.fx({ k: 'demon', x: e.x, y: e.y, z: e.z });
+  }
+  verityCalm(e, beaten) {
+    e.kind = 'verity'; e.health = MOBS.verity.hp; e.hw = 0.25; e.h = 1.05; e.unease = 8; e.mode = 'follow'; e.target = null;
+    const owner = this.players.get(e.owner);
+    if (owner) this.veritySay(e, owner, beaten ? '...it stopped. I\'m sorry. I don\'t know what that was.' : "Good morning. Did something happen last night? I don't remember.", true);
+    this.fx({ k: 'poof', x: e.x, y: e.y + 0.5, z: e.z });
+  }
+  updateVerity(e, dt) {
+    const owner = this.players.get(e.owner);
+    if (!owner) { e.gone = (e.gone || 0) + dt; if (e.gone > 20) this.entities.delete(e.id); return; }
+    e.gone = 0;
+    e.age += dt;
+    if (e.hurt > 0) e.hurt -= dt;
+    if (e.attackCd > 0) e.attackCd -= dt;
+    if (e.stare > 0) e.stare -= dt;
+    const t = this.time % DAY_TICKS;
+    const night = t > 13000 && t < 23000;
+    // unease: she gets lonelier and stranger over time, faster at night
+    e.unease = (e.unease || 0) + dt * (night ? 0.06 : 0.025);
+    if (night && !e.nightMark) { e.nightMark = true; e.unease += 6; }
+    if (!night) e.nightMark = false;
+    const ox = owner.x, oy = owner.y, oz = owner.z;
+    const dOwner = Math.hypot(ox - e.x, oy - e.y, oz - e.z);
+    let tx, ty, tz, speed = MOBS[e.kind].speed;
+    if (e.kind === 'verity_demon') {
+      if (!night) { this.verityCalm(e, false); return; }
+      tx = ox; ty = oy + 0.2; tz = oz;
+      e.yawTarget = Math.atan2(-(ox - e.x), -(oz - e.z));
+      if (dOwner < 1.8 && e.attackCd <= 0 && owner.alive && owner.gamemode !== 'creative') {
+        e.attackCd = 1.1;
+        const l = dOwner || 1;
+        this.send(owner.id, { t: 'hurt', amt: MOBS.verity_demon.dmg, kb: [(ox - e.x) / l * 7, 5, (oz - e.z) / l * 7], cause: 'verity' });
+      }
+      if (dOwner > 40) { e.x = ox - Math.sin(owner.yaw) * -6; e.z = oz - Math.cos(owner.yaw) * -6; e.y = oy + 1; }
+    } else {
+      if (night && e.unease > 62 && this.rnd() < dt / 50) { this.verityTurn(e, owner); return; }
+      // thrown: tumble with gravity until she lands
+      if (e.thrownT > 0) {
+        e.thrownT -= dt;
+        stepBody(this.world, e, dt, { gravity: 20, bounce: true });
+        if (e.onGround && e.thrownT < 1) e.thrownT = 0;
+        return;
+      }
+      // spooky: sometimes appear right behind her owner and stare
+      if (e.unease > 40 && night && e.stare <= 0 && this.rnd() < dt / 80) {
+        const bx = ox + Math.sin(owner.yaw) * 2.2, bz = oz + Math.cos(owner.yaw) * 2.2;
+        if (!SOLID[this.world.getBlock(Math.floor(bx), Math.floor(oy + 0.5), Math.floor(bz))]) {
+          e.x = bx; e.y = oy + 0.4; e.z = bz; e.vx = e.vy = e.vz = 0; e.stare = 6;
+          this.veritySay(e, owner, ['Turn around.', 'Boo.', "I'm right behind you.", 'Found you.'][Math.floor(this.rnd() * 4)]);
+        }
+      }
+      // fight monsters near her owner
+      let foe = null, fd = 12;
+      for (const o of this.entities.values()) {
+        if (o.type !== 'mob' || !MOBS[o.kind].hostile) continue;
+        const d = Math.hypot(o.x - ox, o.z - oz);
+        if (d < fd) { fd = d; foe = o; }
+      }
+      if (e.stare > 0) { tx = e.x; ty = e.y; tz = e.z; e.yawTarget = Math.atan2(-(ox - e.x), -(oz - e.z)); }
+      else if (foe && e.mode !== 'stay') {
+        tx = foe.x; ty = foe.y + 0.6; tz = foe.z;
+        const d = Math.hypot(foe.x - e.x, foe.y - e.y, foe.z - e.z);
+        e.yawTarget = Math.atan2(-(foe.x - e.x), -(foe.z - e.z));
+        if (d < 1.7 && e.attackCd <= 0) { e.attackCd = 0.8; this.damageMob(foe, 4, foe.x - e.x, foe.z - e.z, owner); e.swing = 0.3; }
+      } else if (e.mode === 'stay' && e.home) {
+        [tx, ty, tz] = e.home; e.yawTarget = Math.atan2(-(ox - e.x), -(oz - e.z));
+      } else {
+        const fx = -Math.sin(owner.yaw), fz = -Math.cos(owner.yaw);
+        const rx = Math.cos(owner.yaw), rz = -Math.sin(owner.yaw);
+        tx = ox + rx * 1.3 - fx * 0.9; tz = oz + rz * 1.3 - fz * 0.9; ty = oy + 0.55 + Math.sin(e.age * 1.8) * 0.15;
+        if (dOwner < 4) e.yawTarget = owner.yaw;
+        else e.yawTarget = Math.atan2(-(ox - e.x), -(oz - e.z));
+      }
+      // chatter
+      e.talkT -= dt;
+      if (e.talkT <= 0) { e.talkT = 120 + this.rnd() * 180; this.veritySay(e, owner, verityIdle(this, e, owner)); }
+      if (dOwner > 26 && e.mode !== 'stay') { e.x = tx; e.y = oy + 0.5; e.z = tz; e.vx = e.vy = e.vz = 0; }
+    }
+    // hover toward the target point
+    let dx = tx - e.x, dy = ty - e.y, dz = tz - e.z;
+    const dl = Math.hypot(dx, dy, dz);
+    const want = Math.min(speed, dl * 2.2);
+    const k = Math.min(1, dt * 6);
+    e.vx += ((dl > 0.05 ? dx / dl * want : 0) - e.vx) * k;
+    e.vy += ((dl > 0.05 ? dy / dl * want : 0) - e.vy) * k;
+    e.vz += ((dl > 0.05 ? dz / dl * want : 0) - e.vz) * k;
+    const r = moveBody(this.world, e, e.vx * dt, e.vy * dt, e.vz * dt);
+    if ((r.hitX || r.hitZ) && e.onGround !== undefined) e.vy += 4;
+    if (r.hitY) e.vy = 0;
+    e.walk = Math.min(1, Math.hypot(e.vx, e.vz) / 4) * 0.4;
+    if (e.yawTarget !== undefined) {
+      let d = e.yawTarget - e.yaw;
+      while (d > Math.PI) d -= Math.PI * 2; while (d < -Math.PI) d += Math.PI * 2;
+      e.yaw += d * Math.min(1, dt * 6);
+    }
+    e.pitch = 0;
   }
 
   persistData() {

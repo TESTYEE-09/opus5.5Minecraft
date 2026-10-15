@@ -371,6 +371,14 @@ for (const [tier, t] of Object.entries(TIERS)) {
     });
   }
 }
+// Guns: left click fires, R reloads, right click aims. Magazine state lives in the stack's dmg field
+// (rounds fired since the last reload).
+item('pistol', { stack: 1, gun: { dmg: 5, cd: 0.26, mag: 12, spread: 0.014, auto: false, range: 70, recoil: 0.035, pellets: 1, reload: 1.2, snd: 'gun.pistol', reloadSnd: 'pistol', zoom: 0.85 } });
+item('assault_rifle', { stack: 1, gun: { dmg: 4, cd: 0.095, mag: 30, spread: 0.022, auto: true, range: 90, recoil: 0.018, pellets: 1, reload: 1.8, snd: 'gun.rifle', reloadSnd: 'rifle', zoom: 0.75 } });
+item('shotgun', { stack: 1, gun: { dmg: 3, cd: 0.8, mag: 6, spread: 0.075, auto: false, range: 32, recoil: 0.07, pellets: 8, reload: 2.2, snd: 'gun.shotgun', reloadSnd: 'pump', zoom: 0.85 } });
+item('sniper_rifle', { stack: 1, gun: { dmg: 20, cd: 1.25, mag: 5, spread: 0.05, scopedSpread: 0.0008, auto: false, range: 160, recoil: 0.09, pellets: 1, reload: 2.0, snd: 'gun.sniper', reloadSnd: 'bolt', zoom: 0.28, scope: true } });
+item('bullets', { display: 'Bullets' });
+item('verity', { stack: 1, display: 'Verity', verity: true });
 export const ITEM_COUNT = nextItem;
 
 export function itemDef(id) { return ITEMS[id]; }

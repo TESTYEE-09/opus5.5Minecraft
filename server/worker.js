@@ -48,12 +48,28 @@ export class WorldDO extends DurableObject {
     for (const row of this.sql.exec('SELECT k, v FROM kv').toArray()) {
       try { this.meta[row.k] = JSON.parse(row.v); } catch (e) { /* ignore */ }
     }
+    // migration 1: the first water-flow algorithm flooded hillsides. Drop every liquid edit
+    // (block ids 29-42 are water, flowing water, lava and flowing lava) so the terrain underneath returns.
+    if ((this.meta.mig || 0) < 1) {
+      let removed = 0;
+      for (const [col, m] of this.edits) {
+        for (const [i, id] of m) if (id >= 29 && id <= 42) { m.delete(i); removed++; this.dirty.add(col); }
+      }
+      for (const col of this.dirty) {
+        const m = this.edits.get(col);
+        if (!m.size) { this.edits.delete(col); this.sql.exec('DELETE FROM chunks WHERE col = ?', col); }
+      }
+      this.flush();
+      this.meta.mig = 1;
+      this.sql.exec('INSERT INTO kv (k, v) VALUES (?, ?) ON CONFLICT(k) DO UPDATE SET v = excluded.v', 'mig', '1');
+      this.meta.cleaned = removed;
+    }
   }
 
   async fetch(req) {
     const url = new URL(req.url);
     if (url.pathname === '/status') {
-      return new Response(JSON.stringify({ online: this.sessions.size, names: [...this.sessions.values()].map(s => s.name) }), { headers: { ...CORS, 'content-type': 'application/json' } });
+      return new Response(JSON.stringify({ online: this.sessions.size, names: [...this.sessions.values()].map(s => s.name), cleaned: this.meta.cleaned }), { headers: { ...CORS, 'content-type': 'application/json' } });
     }
     const pair = new WebSocketPair();
     const [client, server] = Object.values(pair);
@@ -160,7 +176,7 @@ export class WorldDO extends DurableObject {
   flush() {
     for (const col of this.dirty) {
       const m = this.edits.get(col);
-      if (!m) continue;
+      if (!m || !m.size) continue;
       const a = new Int32Array(m.size * 2);
       let i = 0;
       for (const [k, v] of m) { a[i++] = k; a[i++] = v; }

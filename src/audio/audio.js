@@ -23,6 +23,12 @@ const SFX = {
   'explode': ['explosionCrunch_000', 'explosionCrunch_001', 'explosionCrunch_002'], 'boom': ['lowFrequency_explosion_000', 'lowFrequency_explosion_001'],
   'fizz': ['slime_000'], 'woosh': ['woosh1', 'woosh2', 'woosh3', 'woosh4'], 'splash': ['sinkWater1', 'sinkWater2', 'sinkWater3', 'sinkWater4'],
   'drip': ['drip1', 'drip2', 'drip3', 'drip4'], 'pickup': ['pickup1', 'pickup2'],
+  'gun.pistol': ['gun_pistol_near1', 'gun_pistol_near2'], 'gun.rifle': ['gun_ar_near1', 'gun_ar_near2'],
+  'gun.shotgun': ['gun_shotgun_near1', 'gun_shotgun_near2'], 'gun.sniper': ['gun_sniper_near1', 'gun_sniper_near2'],
+  'gun.pistol.far': ['gun_pistol_far'], 'gun.rifle.far': ['gun_ar_far'], 'gun.shotgun.far': ['gun_shotgun_far'], 'gun.sniper.far': ['gun_sniper_far'],
+  'gun.out.pistol': ['gun_pistol_out'], 'gun.in.pistol': ['gun_pistol_in'], 'gun.out.rifle': ['gun_mag_out'], 'gun.in.rifle': ['gun_mag_in'],
+  'gun.pump': ['gun_pump'], 'gun.bolt': ['gun_bolt'], 'gun.dry': ['gun_dry_pistol', 'gun_dry_rifle'],
+  'gun.casing': ['gun_casings1', 'gun_casings2', 'gun_casings3'], 'flyby': ['gun_flyby'], 'heartbeat': ['gun_heartbeat'],
 };
 export const STEP = { grass: 'step.grass', stone: 'step.stone', wood: 'step.wood', snow: 'step.snow', cloth: 'step.cloth', gravel: 'step.gravel', sand: 'step.gravel', glass: 'step.stone', metal: 'step.stone' };
 export const DIG = { grass: 'dig.soft', stone: 'dig.stone', wood: 'dig.wood', snow: 'step.snow', cloth: 'dig.soft', gravel: 'step.gravel', sand: 'step.gravel', glass: 'dig.glass', metal: 'dig.metal' };

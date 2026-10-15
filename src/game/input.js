@@ -2,7 +2,7 @@
 export const DEFAULT_KEYS = {
   forward: 'KeyW', back: 'KeyS', left: 'KeyA', right: 'KeyD', jump: 'Space', sneak: 'ShiftLeft', sprint: 'ControlLeft',
   inventory: 'KeyE', drop: 'KeyQ', chat: 'KeyT', command: 'Slash', perspective: 'F5', hud: 'F1', screenshot: 'F2',
-  debug: 'F3', players: 'Tab', photo: 'KeyP',
+  debug: 'F3', players: 'Tab', photo: 'KeyP', reload: 'KeyR',
 };
 
 export class Input {

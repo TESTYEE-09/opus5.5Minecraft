@@ -18,6 +18,7 @@ export class Hand {
     this.sway = new THREE.Vector2();
     this.lastYaw = 0; this.lastPitch = 0;
     this.blockMat = renderer.blockEntityMaterial({ noFog: true, noShadow: true });
+    this.kick = 0;
   }
 
   setLook(look) {
@@ -52,8 +53,9 @@ export class Hand {
 
   doSwing() { if (this.swing <= 0 || this.swing > 0.5) this.swing = 0.0001; }
 
-  update(dt, player, light, visible) {
+  update(dt, player, light, visible, aim = 0) {
     this.root.visible = visible;
+    this.kick = Math.max(0, this.kick - dt * 7);
     if (!visible) return;
     const held = player.held;
     const id = held ? held.id : -1;
@@ -88,7 +90,15 @@ export class Hand {
       const block = isBlockLike(this.heldId);
       const tool = ITEMS[this.heldId] && ITEMS[this.heldId].tool;
       const o = this.itemObj;
-      if (block) {
+      const gun = ITEMS[this.heldId] && ITEMS[this.heldId].gun;
+      if (gun) {
+        const k = this.kick * this.kick;
+        o.scale.setScalar(gun.scope ? 0.78 : 0.68);
+        o.position.set(0.34 * (1 - aim) + bx * (1 - aim) - this.sway.x * 0.15, -0.30 + 0.12 * aim + by * (1 - aim) + eq + this.sway.y * 0.08 + k * 0.03, -0.62 + k * 0.1);
+        o.rotation.set(k * 0.2, Math.PI / 2 - 0.12 - 0.13 * aim, 0);
+        this.arm.position.set(0.42 * (1 - aim) + 0.1 * aim + bx, -0.5 + by + eq + k * 0.03, -0.42 + k * 0.08);
+        this.arm.rotation.set(-1.35, 0.15, 0.1);
+      } else if (block) {
         o.scale.setScalar(0.32);
         o.position.set(0.36 + bx - this.sway.x * 0.2 - sw2 * 0.18, -0.32 + by + eq + this.sway.y * 0.1 + sw * 0.1 + eat * 0.12, -0.62 - sw * 0.15 - eat * 0.1);
         o.rotation.set(0.1 - sw * 0.5, 0.75 + sw2 * 0.35, 0);
